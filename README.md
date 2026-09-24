@@ -3,6 +3,8 @@
 Quattro esperimenti interattivi scritti da zero da Claude Opus 5.5 in una sola sessione.
 Circa 3.300 righe di HTML, CSS, JavaScript e GLSL, **nessuna libreria esterna**.
 
+**Provalo online:** https://viciuslio.github.io/Laboratorio-Opus-5/
+
 | Esperimento | Cosa mostra | Tecnologia |
 |---|---|---|
 | **Fluido** | Equazioni di Navier–Stokes risolte in tempo reale sulla GPU | WebGL2, ~30 passaggi di shader per frame |
