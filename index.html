@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laboratorio Opus</title>
+<meta name="description" content="Quattro esperimenti interattivi scritti da zero da Claude Opus 5.5: fluidodinamica su GPU, neuroevoluzione, un mondo procedurale e musica generativa.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=JetBrains+Mono:wght@400;500&family=STIX+Two+Text:ital,wght@0,400;1,400&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <span class="brand-name">Opus 5.5</span>
+      <span class="brand-sub">Laboratorio</span>
+    </div>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Esperimenti"></nav>
+    <div class="bar-actions">
+      <button type="button" class="btn ghost" id="btn-present" title="Nasconde l'interfaccia (tasto H)">Presentazione</button>
+      <button type="button" class="btn ghost icon" id="btn-full" title="Schermo intero (tasto F)" aria-label="Schermo intero">
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="stage" id="stage">
+      <div class="stage-canvas" id="stage-canvas"></div>
+      <div class="stage-overlay" id="stage-overlay"></div>
+      <p class="hint" id="hint" hidden></p>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      <button type="button" class="btn present-exit" id="present-exit">Mostra interfaccia · H</button>
+    </div>
+
+    <aside class="panel" id="panel">
+      <header class="panel-head">
+        <p class="kicker" id="p-kicker"></p>
+        <h1 class="title" id="p-title"></h1>
+        <p class="tagline" id="p-tagline"></p>
+        <div class="formula">
+          <span class="formula-label">Il cuore matematico</span>
+          <div class="formula-body" id="p-formula"></div>
+        </div>
+      </header>
+
+      <section class="sec" aria-labelledby="h-controls">
+        <h2 class="sec-title" id="h-controls">Controlli</h2>
+        <div class="controls" id="controls"></div>
+      </section>
+
+      <section class="sec" aria-labelledby="h-live">
+        <h2 class="sec-title" id="h-live">In diretta</h2>
+        <dl class="stats" id="stats"></dl>
+        <div class="extras" id="extras"></div>
+      </section>
+
+      <details class="sec how" id="how">
+        <summary><span>Come funziona</span><span class="how-sign" aria-hidden="true"></span></summary>
+        <div class="how-body" id="p-how"></div>
+      </details>
+
+      <footer class="colophon" id="colophon"></footer>
+    </aside>
+  </main>
+</div>
+
+<script src="assets/lab.js"></script>
+<script src="assets/exp-fluid.js"></script>
+<script src="assets/exp-evolution.js"></script>
+<script src="assets/exp-world.js"></script>
+<script src="assets/exp-music.js"></script>
+<script>Lab.boot();</script>
+</body>
+</html>
