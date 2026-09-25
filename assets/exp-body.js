@@ -296,6 +296,18 @@ void main() {
   const SLOW = 100;       // il flusso è mostrato 100 volte più lento del reale
   const ACCENT = '#ff6b81';
 
+  // Scene della scheda: il vaso visto dall'interno e gli organi (definiti in organ-*.js).
+  const SCENES = [
+    ['cuore', 'Cuore'],
+    ['cervello', 'Cervello'],
+    ['fegato', 'Fegato'],
+    ['reni', 'Reni'],
+    ['intestino', 'Intestino'],
+    ['vaso', 'Dentro un vaso sanguigno'],
+  ];
+  let scene = 'cuore';
+  try { scene = localStorage.getItem('corpo-scena') || scene; } catch (e) { /* memoria del browser non disponibile */ }
+
   Lab.register({
     id: 'corpo',
     name: 'Corpo',
@@ -320,285 +332,301 @@ void main() {
       '</ol>',
 
     mount(stage, ui) {
-      const canvas = document.createElement('canvas');
-      stage.append(canvas);
-      const gl = canvas.getContext('webgl2', { alpha: false, depth: false, antialias: false, powerPreference: 'high-performance' });
-      if (!gl) return Lab.fail(stage, 'Il browser non supporta WebGL2.');
-
-      function compile(type, src) {
-        const s = gl.createShader(type);
-        gl.shaderSource(s, src);
-        gl.compileShader(s);
-        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
-        return s;
-      }
-      const prog = gl.createProgram();
-      gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
-      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
-      gl.bindAttribLocation(prog, 0, 'aPos');
-      gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
-      gl.useProgram(prog);
-      const U = {};
-      for (const n of ['uRes', 'uTime', 'uCam', 'uRot', 'uFlow', 'uBeat', 'uR0', 'uDensity', 'uLeuko', 'uMode', 'uSeed']) U[n] = gl.getUniformLocation(prog, n);
-
-      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(0);
-
-      // ---------- stato ----------
-      const st = {
-        bpm: 72, blood: 4, probe: 2.5, density: 0.55, leuko: true, mode: 0,
-        seed: Math.random() * 50,
-        z: 0, flow: 0, beat: 0, lastBeat: 0,
-        yawOff: 0, pitchOff: 0, dragging: false, lastDrag: 0,
-        scale: 0.6, sound: false,
-      };
-
-      function resize() {
-        if (!canvas.clientWidth || !canvas.clientHeight) return;
-        const w = Math.max(1, Math.round(canvas.clientWidth * st.scale));
-        const h = Math.max(1, Math.round(canvas.clientHeight * st.scale));
-        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-      }
-
-      // ---------- suono del cuore: primo e secondo tono ----------
-      let actx = null;
-      function thump(t, freq, gain) {
-        const g = actx.createGain();
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(gain, t + 0.015);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
-        const lp = actx.createBiquadFilter();
-        lp.type = 'lowpass';
-        lp.frequency.value = 220;
-        for (const [type, mult, lvl] of [['sine', 1, 1], ['triangle', 2, 0.35]]) {
-          const o = actx.createOscillator();
-          o.type = type;
-          o.frequency.setValueAtTime(freq * mult * 1.6, t);
-          o.frequency.exponentialRampToValueAtTime(freq * mult, t + 0.08);
-          const og = actx.createGain();
-          og.gain.value = lvl;
-          o.connect(og);
-          og.connect(g);
-          o.start(t);
-          o.stop(t + 0.25);
-        }
-        g.connect(lp);
-        lp.connect(actx.destination);
-      }
-      function heartSound() {
-        if (!actx || !st.sound) return;
-        const t = actx.currentTime + 0.01;
-        thump(t, 50, 0.9);
-        thump(t + 0.1 + 0.25 * (60 / st.bpm), 64, 0.55);
-      }
-
-      // ---------- input: guardarsi intorno ----------
-      let px = 0, py = 0;
-      canvas.addEventListener('pointerdown', (e) => {
-        canvas.setPointerCapture(e.pointerId);
-        st.dragging = true; px = e.clientX; py = e.clientY;
-      });
-      canvas.addEventListener('pointermove', (e) => {
-        if (!st.dragging) return;
-        st.yawOff += (e.clientX - px) * 0.0045;
-        st.pitchOff = Math.max(-1.2, Math.min(1.2, st.pitchOff - (e.clientY - py) * 0.0045));
-        px = e.clientX; py = e.clientY;
-        st.lastDrag = performance.now();
-      });
-      const endDrag = () => { st.dragging = false; st.lastDrag = performance.now(); };
-      canvas.addEventListener('pointerup', endDrag);
-      canvas.addEventListener('pointercancel', endDrag);
-
-      // ---------- interfaccia ----------
-      ui.slider({ id: 'bpm', label: 'Battito cardiaco', min: 40, max: 180, step: 1, value: st.bpm, format: (v) => `${v} bpm`, onInput: (v) => (st.bpm = v) });
-      ui.slider({ id: 'blood', label: 'Velocità del sangue (reale)', min: 0.5, max: 8, step: 0.1, value: st.blood, format: (v) => `${v.toFixed(1)} mm/s`, onInput: (v) => (st.blood = v) });
-      ui.slider({ id: 'probe', label: 'Velocità della sonda (reale)', min: 0, max: 8, step: 0.1, value: st.probe, format: (v) => `${v.toFixed(1)} mm/s`, onInput: (v) => (st.probe = v) });
-      ui.slider({ id: 'dens', label: 'Densità di globuli rossi', min: 0.1, max: 0.9, step: 0.01, value: st.density, format: (v) => Math.round(v * 100) + '%', onInput: (v) => (st.density = v) });
+      const available = SCENES.filter(([id]) => id === 'vaso' || (window.BodyOrgans && BodyOrgans.list[id]));
+      if (!available.some(([id]) => id === scene)) scene = 'vaso';
       ui.select({
-        id: 'mode', label: 'Strumento di osservazione', value: '0',
-        options: [{ value: '0', label: 'Endoscopio · colori naturali' }, { value: '1', label: 'Microscopio elettronico · falsi colori' }],
-        onChange: (v) => (st.mode = +v),
-      });
-      ui.toggle({ id: 'leuko', label: 'Globuli bianchi', value: st.leuko, onChange: (v) => (st.leuko = v) });
-      ui.toggle({
-        id: 'sound', label: 'Suono del battito', value: false,
+        id: 'scene', label: 'Cosa esplorare', value: scene,
+        options: available.map(([value, label]) => ({ value, label })),
         onChange: (v) => {
-          st.sound = v;
-          if (v && !actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-          if (actx) actx.resume();
+          scene = v;
+          try { localStorage.setItem('corpo-scena', v); } catch (e) { /* memoria del browser non disponibile */ }
+          Lab.remount();
         },
       });
-      ui.actions([
-        { id: 'seed', label: 'Nuovo vaso', primary: true, onClick: () => { st.seed = Math.random() * 50; } },
-        { id: 'look', label: 'Guarda avanti', onClick: () => { st.yawOff = 0; st.pitchOff = 0; } },
-      ]);
-
-      const sBpm = ui.stat('Battito');
-      const sDiam = ui.stat('Diametro del vaso');
-      const sVel = ui.stat('Sangue al centro');
-      const sDist = ui.stat('Percorso');
-      const sFps = ui.stat('Fotogrammi/s');
-      const sRes = ui.stat('Pixel calcolati');
-      const ecgFig = ui.figure('Elettrocardiogramma, sincronizzato con la scena', 84);
-      const profFig = ui.figure('Profilo di velocità nel vaso · Poiseuille', 112);
-
-      function drawEcg() {
-        const f = ecgFig.fit();
-        const g = f.ctx, w = f.w, h = f.h;
-        g.clearRect(0, 0, w, h);
-        g.strokeStyle = '#1d212b';
-        g.lineWidth = 1;
-        for (let x = 0; x < w; x += 16) { g.beginPath(); g.moveTo(x + 0.5, 0); g.lineTo(x + 0.5, h); g.stroke(); }
-        for (let y = 0; y < h; y += 16) { g.beginPath(); g.moveTo(0, y + 0.5); g.lineTo(w, y + 0.5); g.stroke(); }
-        const span = 4;                                       // secondi mostrati
-        const base = h * 0.68, amp = h * 0.52;
-        g.strokeStyle = ACCENT;
-        g.lineWidth = 1.6;
-        g.lineJoin = 'round';
-        g.beginPath();
-        for (let x = 0; x <= w; x += 1) {
-          const ph = st.beat - ((w - x) / w) * span * (st.bpm / 60);
-          const y = base - ecg(ph) * amp;
-          if (x) g.lineTo(x, y); else g.moveTo(x, y);
-        }
-        g.stroke();
-        g.beginPath();
-        g.arc(w - 1.5, base - ecg(st.beat) * amp, 3, 0, Math.PI * 2);
-        g.fillStyle = ACCENT;
-        g.fill();
-      }
-
-      function drawProfile(push) {
-        const f = profFig.fit();
-        const g = f.ctx, w = f.w, h = f.h;
-        g.clearRect(0, 0, w, h);
-        const top = 14, bot = h - 14, left = 56, right = w - 14;
-        g.strokeStyle = '#7f8599';
-        g.lineWidth = 2;
-        g.beginPath(); g.moveTo(left - 8, top); g.lineTo(right, top); g.moveTo(left - 8, bot); g.lineTo(right, bot); g.stroke();
-        const n = 11, maxLen = right - left;
-        g.strokeStyle = 'rgba(255,107,129,0.8)';
-        g.fillStyle = 'rgba(255,107,129,0.8)';
-        g.lineWidth = 1.4;
-        const tips = [];
-        for (let i = 0; i < n; i++) {
-          const rn = (i / (n - 1)) * 2 - 1;                  // da −1 (parete) a +1 (parete)
-          const y = top + ((rn + 1) / 2) * (bot - top);
-          const len = maxLen * 0.78 * (1 - rn * rn) * push;
-          tips.push([left + len, y]);
-          if (len < 3) continue;
-          g.beginPath(); g.moveTo(left, y); g.lineTo(left + len - 4, y); g.stroke();
-          g.beginPath(); g.moveTo(left + len, y); g.lineTo(left + len - 6, y - 3); g.lineTo(left + len - 6, y + 3); g.closePath(); g.fill();
-        }
-        g.strokeStyle = '#e9ebf2';
-        g.setLineDash([3, 3]);
-        g.lineWidth = 1;
-        g.beginPath();
-        for (let i = 0; i <= 40; i++) {
-          const rn = (i / 40) * 2 - 1;
-          const x = left + maxLen * 0.78 * (1 - rn * rn) * push, y = top + ((rn + 1) / 2) * (bot - top);
-          if (i) g.lineTo(x, y); else g.moveTo(x, y);
-        }
-        g.stroke();
-        g.setLineDash([]);
-        g.fillStyle = '#7f8599';
-        g.font = '500 9.5px "JetBrains Mono", Consolas, monospace';
-        g.textBaseline = 'middle';
-        g.fillText('parete', 0, top);
-        g.fillText('centro', 0, (top + bot) / 2);
-        g.fillText('parete', 0, bot);
-      }
-
-      // ---------- ciclo ----------
-      resize();
-      const stopObs = Lab.observeSize(canvas, resize);
-      const fps = Lab.fpsMeter();
-      const t0 = performance.now();
-      let raf = 0, last = t0, ema = 16.7, frames = 0, lastAdapt = t0;
-
-      function frame(now) {
-        raf = requestAnimationFrame(frame);
-        const rawDt = Math.max(0, now - last);
-        last = Math.max(last, now);
-        const dt = Math.min(rawDt / 1000, 0.1);
-        frames++;
-
-        ema += (rawDt - ema) * 0.08;
-        if (frames > 40 && now - lastAdapt > 700) {
-          if (ema > 26 && st.scale > 0.3) { st.scale = Math.max(0.3, st.scale * 0.85); resize(); lastAdapt = now; }
-          else if (ema < 18.5 && st.scale < 1) { st.scale = Math.min(1, st.scale * 1.08); resize(); lastAdapt = now; }
-        }
-
-        // Battito in tempo reale; flusso e sonda rallentati 100 volte (mm/s → µm/s ÷ 100).
-        const prevBeat = st.beat;
-        st.beat += dt * (st.bpm / 60);
-        if (Math.floor(st.beat) > Math.floor(prevBeat)) heartSound();
-        const push = 0.75 + 0.5 * systole(st.beat);
-        st.flow += ((st.blood * 1000) / SLOW) * push * dt;
-        st.z += ((st.probe * 1000) / SLOW) * dt;
-
-        // Telecamera sulla linea centrale del vaso, rivolta lungo la sua tangente.
-        const [cx, cy] = path(st.z, st.seed);
-        const [ax, ay] = path(st.z - 1, st.seed);
-        const [bx, by] = path(st.z + 1, st.seed);
-        let fx = (bx - ax) / 2, fy = (by - ay) / 2, fz = 1;
-        const fl = Math.hypot(fx, fy, fz);
-        fx /= fl; fy /= fl; fz /= fl;
-        if (!st.dragging && now - st.lastDrag > 1800) {
-          const k = Math.exp(-dt * 0.9);
-          st.yawOff *= k;
-          st.pitchOff *= k;
-        }
-        const yaw = Math.atan2(fx, fz) + st.yawOff;
-        const pitch = Math.asin(fy) + st.pitchOff;
-        const f = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)];
-        const rl = Math.hypot(f[2], f[0]);
-        const r = [f[2] / rl, 0, -f[0] / rl];
-        const u = [f[1] * r[2] - f[2] * r[1], f[2] * r[0] - f[0] * r[2], f[0] * r[1] - f[1] * r[0]];
-
-        gl.viewport(0, 0, canvas.width, canvas.height);
-        gl.uniform2f(U.uRes, canvas.width, canvas.height);
-        gl.uniform1f(U.uTime, (now - t0) / 1000);
-        gl.uniform3f(U.uCam, cx, cy, st.z);
-        gl.uniformMatrix3fv(U.uRot, false, [...r, ...u, ...f]);
-        gl.uniform1f(U.uFlow, st.flow);
-        gl.uniform1f(U.uBeat, st.beat);
-        gl.uniform1f(U.uR0, R0);
-        gl.uniform1f(U.uDensity, st.density);
-        gl.uniform1f(U.uLeuko, st.leuko ? 1 : 0);
-        gl.uniform1f(U.uMode, st.mode);
-        gl.uniform1f(U.uSeed, st.seed);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-
-        drawEcg();
-        drawProfile(push);
-
-        const fv = fps();
-        if (frames % 8 === 0) {
-          const diam = 2 * (R0 * (1 + 0.06 * systole(st.beat - st.z * 0.0004)) + 1.5 * Math.sin(st.z * 0.013 + st.seed * 3));
-          sBpm(`${st.bpm} bpm`);
-          sDiam(`${diam.toFixed(1)} µm`);
-          sVel(`${(st.blood * push).toFixed(1)} mm/s`);
-          sDist(st.z < 1000 ? `${Math.round(st.z)} µm` : `${(st.z / 1000).toFixed(2)} mm`);
-          sFps(fv ? fv.toFixed(0) : '—');
-          sRes(`${canvas.width}×${canvas.height} · ${Math.round(st.scale * 100)}%`);
-        }
-      }
-      raf = requestAnimationFrame(frame);
-
-      return {
-        unmount() {
-          cancelAnimationFrame(raf);
-          stopObs();
-          if (actx) actx.close().catch(() => {});
-          const lose = gl.getExtension('WEBGL_lose_context');
-          if (lose) lose.loseContext();
-          canvas.remove();
-        },
-      };
+      return scene === 'vaso' ? mountVessel(stage, ui) : BodyOrgans.mount(stage, ui, scene);
     },
   });
+
+  // ---------- il volo dentro il vaso sanguigno ----------
+  function mountVessel(stage, ui) {
+    const canvas = document.createElement('canvas');
+    stage.append(canvas);
+    const gl = canvas.getContext('webgl2', { alpha: false, depth: false, antialias: false, powerPreference: 'high-performance' });
+    if (!gl) return Lab.fail(stage, 'Il browser non supporta WebGL2.');
+
+    function compile(type, src) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+      return s;
+    }
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+    gl.bindAttribLocation(prog, 0, 'aPos');
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    gl.useProgram(prog);
+    const U = {};
+    for (const n of ['uRes', 'uTime', 'uCam', 'uRot', 'uFlow', 'uBeat', 'uR0', 'uDensity', 'uLeuko', 'uMode', 'uSeed']) U[n] = gl.getUniformLocation(prog, n);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);
+
+    // ---------- stato ----------
+    const st = {
+      bpm: 72, blood: 4, probe: 2.5, density: 0.55, leuko: true, mode: 0,
+      seed: Math.random() * 50,
+      z: 0, flow: 0, beat: 0, lastBeat: 0,
+      yawOff: 0, pitchOff: 0, dragging: false, lastDrag: 0,
+      scale: 0.6, sound: false,
+    };
+
+    function resize() {
+      if (!canvas.clientWidth || !canvas.clientHeight) return;
+      const w = Math.max(1, Math.round(canvas.clientWidth * st.scale));
+      const h = Math.max(1, Math.round(canvas.clientHeight * st.scale));
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    }
+
+    // ---------- suono del cuore: primo e secondo tono ----------
+    let actx = null;
+    function thump(t, freq, gain) {
+      const g = actx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(gain, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      const lp = actx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 220;
+      for (const [type, mult, lvl] of [['sine', 1, 1], ['triangle', 2, 0.35]]) {
+        const o = actx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq * mult * 1.6, t);
+        o.frequency.exponentialRampToValueAtTime(freq * mult, t + 0.08);
+        const og = actx.createGain();
+        og.gain.value = lvl;
+        o.connect(og);
+        og.connect(g);
+        o.start(t);
+        o.stop(t + 0.25);
+      }
+      g.connect(lp);
+      lp.connect(actx.destination);
+    }
+    function heartSound() {
+      if (!actx || !st.sound) return;
+      const t = actx.currentTime + 0.01;
+      thump(t, 50, 0.9);
+      thump(t + 0.1 + 0.25 * (60 / st.bpm), 64, 0.55);
+    }
+
+    // ---------- input: guardarsi intorno ----------
+    let px = 0, py = 0;
+    canvas.addEventListener('pointerdown', (e) => {
+      canvas.setPointerCapture(e.pointerId);
+      st.dragging = true; px = e.clientX; py = e.clientY;
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!st.dragging) return;
+      st.yawOff += (e.clientX - px) * 0.0045;
+      st.pitchOff = Math.max(-1.2, Math.min(1.2, st.pitchOff - (e.clientY - py) * 0.0045));
+      px = e.clientX; py = e.clientY;
+      st.lastDrag = performance.now();
+    });
+    const endDrag = () => { st.dragging = false; st.lastDrag = performance.now(); };
+    canvas.addEventListener('pointerup', endDrag);
+    canvas.addEventListener('pointercancel', endDrag);
+
+    // ---------- interfaccia ----------
+    ui.slider({ id: 'bpm', label: 'Battito cardiaco', min: 40, max: 180, step: 1, value: st.bpm, format: (v) => `${v} bpm`, onInput: (v) => (st.bpm = v) });
+    ui.slider({ id: 'blood', label: 'Velocità del sangue (reale)', min: 0.5, max: 8, step: 0.1, value: st.blood, format: (v) => `${v.toFixed(1)} mm/s`, onInput: (v) => (st.blood = v) });
+    ui.slider({ id: 'probe', label: 'Velocità della sonda (reale)', min: 0, max: 8, step: 0.1, value: st.probe, format: (v) => `${v.toFixed(1)} mm/s`, onInput: (v) => (st.probe = v) });
+    ui.slider({ id: 'dens', label: 'Densità di globuli rossi', min: 0.1, max: 0.9, step: 0.01, value: st.density, format: (v) => Math.round(v * 100) + '%', onInput: (v) => (st.density = v) });
+    ui.select({
+      id: 'mode', label: 'Strumento di osservazione', value: '0',
+      options: [{ value: '0', label: 'Endoscopio · colori naturali' }, { value: '1', label: 'Microscopio elettronico · falsi colori' }],
+      onChange: (v) => (st.mode = +v),
+    });
+    ui.toggle({ id: 'leuko', label: 'Globuli bianchi', value: st.leuko, onChange: (v) => (st.leuko = v) });
+    ui.toggle({
+      id: 'sound', label: 'Suono del battito', value: false,
+      onChange: (v) => {
+        st.sound = v;
+        if (v && !actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+        if (actx) actx.resume();
+      },
+    });
+    ui.actions([
+      { id: 'seed', label: 'Nuovo vaso', primary: true, onClick: () => { st.seed = Math.random() * 50; } },
+      { id: 'look', label: 'Guarda avanti', onClick: () => { st.yawOff = 0; st.pitchOff = 0; } },
+    ]);
+
+    const sBpm = ui.stat('Battito');
+    const sDiam = ui.stat('Diametro del vaso');
+    const sVel = ui.stat('Sangue al centro');
+    const sDist = ui.stat('Percorso');
+    const sFps = ui.stat('Fotogrammi/s');
+    const sRes = ui.stat('Pixel calcolati');
+    const ecgFig = ui.figure('Elettrocardiogramma, sincronizzato con la scena', 84);
+    const profFig = ui.figure('Profilo di velocità nel vaso · Poiseuille', 112);
+
+    function drawEcg() {
+      const f = ecgFig.fit();
+      const g = f.ctx, w = f.w, h = f.h;
+      g.clearRect(0, 0, w, h);
+      g.strokeStyle = '#1d212b';
+      g.lineWidth = 1;
+      for (let x = 0; x < w; x += 16) { g.beginPath(); g.moveTo(x + 0.5, 0); g.lineTo(x + 0.5, h); g.stroke(); }
+      for (let y = 0; y < h; y += 16) { g.beginPath(); g.moveTo(0, y + 0.5); g.lineTo(w, y + 0.5); g.stroke(); }
+      const span = 4;                                       // secondi mostrati
+      const base = h * 0.68, amp = h * 0.52;
+      g.strokeStyle = ACCENT;
+      g.lineWidth = 1.6;
+      g.lineJoin = 'round';
+      g.beginPath();
+      for (let x = 0; x <= w; x += 1) {
+        const ph = st.beat - ((w - x) / w) * span * (st.bpm / 60);
+        const y = base - ecg(ph) * amp;
+        if (x) g.lineTo(x, y); else g.moveTo(x, y);
+      }
+      g.stroke();
+      g.beginPath();
+      g.arc(w - 1.5, base - ecg(st.beat) * amp, 3, 0, Math.PI * 2);
+      g.fillStyle = ACCENT;
+      g.fill();
+    }
+
+    function drawProfile(push) {
+      const f = profFig.fit();
+      const g = f.ctx, w = f.w, h = f.h;
+      g.clearRect(0, 0, w, h);
+      const top = 14, bot = h - 14, left = 56, right = w - 14;
+      g.strokeStyle = '#7f8599';
+      g.lineWidth = 2;
+      g.beginPath(); g.moveTo(left - 8, top); g.lineTo(right, top); g.moveTo(left - 8, bot); g.lineTo(right, bot); g.stroke();
+      const n = 11, maxLen = right - left;
+      g.strokeStyle = 'rgba(255,107,129,0.8)';
+      g.fillStyle = 'rgba(255,107,129,0.8)';
+      g.lineWidth = 1.4;
+      const tips = [];
+      for (let i = 0; i < n; i++) {
+        const rn = (i / (n - 1)) * 2 - 1;                  // da −1 (parete) a +1 (parete)
+        const y = top + ((rn + 1) / 2) * (bot - top);
+        const len = maxLen * 0.78 * (1 - rn * rn) * push;
+        tips.push([left + len, y]);
+        if (len < 3) continue;
+        g.beginPath(); g.moveTo(left, y); g.lineTo(left + len - 4, y); g.stroke();
+        g.beginPath(); g.moveTo(left + len, y); g.lineTo(left + len - 6, y - 3); g.lineTo(left + len - 6, y + 3); g.closePath(); g.fill();
+      }
+      g.strokeStyle = '#e9ebf2';
+      g.setLineDash([3, 3]);
+      g.lineWidth = 1;
+      g.beginPath();
+      for (let i = 0; i <= 40; i++) {
+        const rn = (i / 40) * 2 - 1;
+        const x = left + maxLen * 0.78 * (1 - rn * rn) * push, y = top + ((rn + 1) / 2) * (bot - top);
+        if (i) g.lineTo(x, y); else g.moveTo(x, y);
+      }
+      g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = '#7f8599';
+      g.font = '500 9.5px "JetBrains Mono", Consolas, monospace';
+      g.textBaseline = 'middle';
+      g.fillText('parete', 0, top);
+      g.fillText('centro', 0, (top + bot) / 2);
+      g.fillText('parete', 0, bot);
+    }
+
+    // ---------- ciclo ----------
+    resize();
+    const stopObs = Lab.observeSize(canvas, resize);
+    const fps = Lab.fpsMeter();
+    const t0 = performance.now();
+    let raf = 0, last = t0, ema = 16.7, frames = 0, lastAdapt = t0;
+
+    function frame(now) {
+      raf = requestAnimationFrame(frame);
+      const rawDt = Math.max(0, now - last);
+      last = Math.max(last, now);
+      const dt = Math.min(rawDt / 1000, 0.1);
+      frames++;
+
+      ema += (rawDt - ema) * 0.08;
+      if (frames > 40 && now - lastAdapt > 700) {
+        if (ema > 26 && st.scale > 0.3) { st.scale = Math.max(0.3, st.scale * 0.85); resize(); lastAdapt = now; }
+        else if (ema < 18.5 && st.scale < 1) { st.scale = Math.min(1, st.scale * 1.08); resize(); lastAdapt = now; }
+      }
+
+      // Battito in tempo reale; flusso e sonda rallentati 100 volte (mm/s → µm/s ÷ 100).
+      const prevBeat = st.beat;
+      st.beat += dt * (st.bpm / 60);
+      if (Math.floor(st.beat) > Math.floor(prevBeat)) heartSound();
+      const push = 0.75 + 0.5 * systole(st.beat);
+      st.flow += ((st.blood * 1000) / SLOW) * push * dt;
+      st.z += ((st.probe * 1000) / SLOW) * dt;
+
+      // Telecamera sulla linea centrale del vaso, rivolta lungo la sua tangente.
+      const [cx, cy] = path(st.z, st.seed);
+      const [ax, ay] = path(st.z - 1, st.seed);
+      const [bx, by] = path(st.z + 1, st.seed);
+      let fx = (bx - ax) / 2, fy = (by - ay) / 2, fz = 1;
+      const fl = Math.hypot(fx, fy, fz);
+      fx /= fl; fy /= fl; fz /= fl;
+      if (!st.dragging && now - st.lastDrag > 1800) {
+        const k = Math.exp(-dt * 0.9);
+        st.yawOff *= k;
+        st.pitchOff *= k;
+      }
+      const yaw = Math.atan2(fx, fz) + st.yawOff;
+      const pitch = Math.asin(fy) + st.pitchOff;
+      const f = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)];
+      const rl = Math.hypot(f[2], f[0]);
+      const r = [f[2] / rl, 0, -f[0] / rl];
+      const u = [f[1] * r[2] - f[2] * r[1], f[2] * r[0] - f[0] * r[2], f[0] * r[1] - f[1] * r[0]];
+
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.uniform2f(U.uRes, canvas.width, canvas.height);
+      gl.uniform1f(U.uTime, (now - t0) / 1000);
+      gl.uniform3f(U.uCam, cx, cy, st.z);
+      gl.uniformMatrix3fv(U.uRot, false, [...r, ...u, ...f]);
+      gl.uniform1f(U.uFlow, st.flow);
+      gl.uniform1f(U.uBeat, st.beat);
+      gl.uniform1f(U.uR0, R0);
+      gl.uniform1f(U.uDensity, st.density);
+      gl.uniform1f(U.uLeuko, st.leuko ? 1 : 0);
+      gl.uniform1f(U.uMode, st.mode);
+      gl.uniform1f(U.uSeed, st.seed);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      drawEcg();
+      drawProfile(push);
+
+      const fv = fps();
+      if (frames % 8 === 0) {
+        const diam = 2 * (R0 * (1 + 0.06 * systole(st.beat - st.z * 0.0004)) + 1.5 * Math.sin(st.z * 0.013 + st.seed * 3));
+        sBpm(`${st.bpm} bpm`);
+        sDiam(`${diam.toFixed(1)} µm`);
+        sVel(`${(st.blood * push).toFixed(1)} mm/s`);
+        sDist(st.z < 1000 ? `${Math.round(st.z)} µm` : `${(st.z / 1000).toFixed(2)} mm`);
+        sFps(fv ? fv.toFixed(0) : '—');
+        sRes(`${canvas.width}×${canvas.height} · ${Math.round(st.scale * 100)}%`);
+      }
+    }
+    raf = requestAnimationFrame(frame);
+
+    return {
+      unmount() {
+        cancelAnimationFrame(raf);
+        stopObs();
+        if (actx) actx.close().catch(() => {});
+        const lose = gl.getExtension('WEBGL_lose_context');
+        if (lose) lose.loseContext();
+        canvas.remove();
+      },
+    };
+  }
 })();

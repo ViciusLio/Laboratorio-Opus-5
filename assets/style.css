@@ -180,6 +180,32 @@ button, input, select { font: inherit; color: inherit; }
 .fail p { margin: 0; }
 .present-exit { position: absolute; right: 16px; bottom: 16px; display: none; }
 
+/* Etichette anatomiche agganciate ai punti 3D */
+.organ-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.olabel { position: absolute; left: 0; top: 0; width: 0; height: 0; will-change: transform; }
+.olabel-dot {
+  position: absolute;
+  left: -4px; top: -4px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(11, 12, 17, .75);
+}
+.olabel-text {
+  position: absolute;
+  left: 12px; top: 0;
+  transform: translateY(calc(-50% + var(--dy, 0px)));
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(11, 12, 17, .72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font: 500 11.5px/1.3 var(--mono);
+  color: var(--text);
+  white-space: nowrap;
+}
+.olabel.flip .olabel-text { left: auto; right: 12px; }
+
 /* ---------- pannello ---------- */
 .panel {
   display: flex;

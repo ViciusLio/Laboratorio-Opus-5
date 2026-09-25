@@ -132,11 +132,20 @@
 
       overlay(node) { overlay.append(node); return node; },
       hint(text) { hint.textContent = text || ''; hint.hidden = !text; },
+
+      // Sostituisce i testi del pannello (per esperimenti con più scene).
+      header(o) {
+        if (o.kicker != null) $('#p-kicker').textContent = o.kicker;
+        if (o.title != null) $('#p-title').textContent = o.title;
+        if (o.tagline != null) $('#p-tagline').textContent = o.tagline;
+        if (o.formula != null) $('#p-formula').innerHTML = o.formula;
+        if (o.how != null) $('#p-how').innerHTML = o.how;
+      },
     };
   }
 
-  function select(id) {
-    if (id === currentId) return;
+  function select(id, force) {
+    if (id === currentId && !force) return;
     const exp = experiments.find((e) => e.id === id);
     if (!exp) return;
     if (current) {
@@ -219,6 +228,9 @@
         return fps;
       };
     },
+
+    // Smonta e rimonta l'esperimento corrente (cambio di scena interno).
+    remount() { if (currentId) select(currentId, true); },
 
     observeSize(el, cb) {
       const ro = new ResizeObserver(() => cb(el.clientWidth, el.clientHeight));
