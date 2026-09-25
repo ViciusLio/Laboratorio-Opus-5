@@ -344,9 +344,9 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
 }
 .select option { background: var(--ink-3); }
 
-.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.switch { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
 .switch-label { font-size: 14px; color: var(--text-2); }
-.switch-input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch-input { position: absolute; right: 0; top: 50%; opacity: 0; width: 1px; height: 1px; margin: 0; }
 .switch-track {
   position: relative;
   flex: none;
