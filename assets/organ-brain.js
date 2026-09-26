@@ -157,7 +157,7 @@ vec3 cutColor(vec3 p) {
       { t: 'Cervelletto', p: [5.1, -3.6, -6.1], n: [0.7, -0.2, -0.6] },
       { t: 'Tronco encefalico', p: [0.5, -5.2, -1.2], n: [0.4, -0.2, 0.9] },
       { t: 'Corpo calloso', p: [0.0, 2.2, -0.3], n: [1, 0, 0], only: 'sagittale' },
-      { t: 'Ventricolo laterale', p: [1.0, 1.1, 0.8], n: [0, 0, 1], only: 'coronale' },
+      { t: 'Ventricolo laterale', p: [1.0, 1.1, 0.3], n: [0, 0, 1], only: 'coronale' },
     ],
     stats: [
       ['Peso tipico', '1,3–1,4 kg'],
