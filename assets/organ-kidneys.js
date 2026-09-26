@@ -69,8 +69,7 @@ vec4 material(float m, vec3 p, vec3 n) {
   return vec4(0.86, 0.8, 0.64, 0.5);                                                       // uretere
 }
 
-vec3 cutColor(vec3 p) {
-  vec2 o = organ(p);
+vec3 cutColor(vec3 p, vec2 o) {
   if (o.y > 4.5) return vec3(0.95, 0.9, 0.78);
   if (o.y > 3.5) return o.x > -0.15 ? vec3(0.8, 0.8, 0.85) : vec3(0.18, 0.1, 0.25);
   if (o.y > 2.5) return o.x > -0.2 ? vec3(0.9, 0.82, 0.78) : vec3(0.5, 0.06, 0.06);

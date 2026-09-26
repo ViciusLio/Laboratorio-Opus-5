@@ -107,8 +107,7 @@ vec4 material(float m, vec3 p, vec3 n) {
   return vec4(0.9, 0.85, 0.8, 0.3);                                               // pareti dei ventricoli
 }
 
-vec3 cutColor(vec3 p) {
-  vec2 o = organ(p);
+vec3 cutColor(vec3 p, vec2 o) {
   float depth = -o.x;
   vec3 GRAY = vec3(0.56, 0.45, 0.45), WHITE = vec3(0.93, 0.89, 0.82);
   if (o.y > 2.5 && o.y < 3.5) {                       // cervelletto: l'"albero della vita"

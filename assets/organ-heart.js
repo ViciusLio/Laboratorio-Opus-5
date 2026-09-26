@@ -129,8 +129,7 @@ vec4 material(float m, vec3 p, vec3 n) {
   return vec4(0.8, 0.45, 0.42, 0.35);                                                   // endocardio
 }
 
-vec3 cutColor(vec3 p) {
-  vec2 o = organ(p);
+vec3 cutColor(vec3 p, vec2 o) {
   if (o.y > 5.5 && o.y < 7.5) return vec3(0.88, 0.76, 0.7);                            // parete dei vasi
   if (o.y > 2.5 && o.y < 3.5 && o.x > -0.2) return vec3(0.9, 0.72, 0.32);             // grasso, solo in superficie
   vec3 q = toVent(p);

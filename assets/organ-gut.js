@@ -41,7 +41,7 @@ float turnDist(vec3 p, float xe, float ym, float zL, float dir) {
 float loops(vec3 p, float zL, float off) {
   float i = clamp(floor((p.y - rowY(0.0, off)) / S + 0.5), 0.0, NR - 1.0);
   float d = min(rowDist(p, i - 1.0, zL, off), min(rowDist(p, i, zL, off), rowDist(p, i + 1.0, zL, off)));
-  for (int j = -1; j <= 1; j++) {
+  for (int j = uZero - 1; j <= 1; j++) {
     float r = i + float(j);
     float k = floor(r / 2.0);
     if (k >= 0.0 && 2.0 * k + 1.0 <= NR - 1.0) d = min(d, turnDist(p, rEnd(k, off), rowY(2.0 * k + 0.5, off), zL, 1.0));
@@ -73,7 +73,7 @@ const float CL[8] = float[8](13.0, 7.0, 14.0, 8.0, 14.0, 9.0, 8.0, 6.0);
 float colon(vec3 p, out float tae) {
   float best = 1e5, bt = 0.0, br = 1.0, s = 0.0, cum = 0.0;
   int bi = 0;
-  for (int i = 0; i < 8; i++) {
+  for (int i = uZero; i < 8; i++) {
     vec2 b = sdBezier(p, CA[i], CB[i], CC[i]);
     float r = mix(CR[i].x, CR[i].y, b.y);
     if (b.x - r < best) { best = b.x - r; bt = b.y; br = r; bi = i; s = cum + b.y * CL[i]; }
@@ -124,8 +124,7 @@ vec4 material(float m, vec3 p, vec3 n) {
   return m < 6.5 ? vec4(vec3(0.9, 0.42, 0.44) * (0.75 + 0.4 * vil), 0.3) : vec4(0.85, 0.5, 0.48, 0.4);
 }
 
-vec3 cutColor(vec3 p) {
-  vec2 o = organ(p);
+vec3 cutColor(vec3 p, vec2 o) {
   float depth = -o.x;                         // attraverso la parete: sierosa, muscolare, mucosa
   vec3 muscle = vec3(0.78, 0.36, 0.34);
   if (o.y < 1.5 || (o.y > 5.5 && o.y < 6.5)) {

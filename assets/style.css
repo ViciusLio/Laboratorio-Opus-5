@@ -180,6 +180,28 @@ button, input, select { font: inherit; color: inherit; }
 .fail p { margin: 0; }
 .present-exit { position: absolute; right: 16px; bottom: 16px; display: none; }
 
+/* Avviso mentre lo shader di un organo si compila */
+.organ-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font: 500 13px/1.4 var(--mono);
+  color: var(--text-2);
+  pointer-events: none;
+}
+.organ-spinner {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--ink-4);
+  border-top-color: var(--accent);
+  animation: organ-spin .9s linear infinite;
+}
+@keyframes organ-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .organ-spinner { animation: none; } }
+
 /* Etichette anatomiche agganciate ai punti 3D */
 .organ-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .olabel { position: absolute; left: 0; top: 0; width: 0; height: 0; will-change: transform; }

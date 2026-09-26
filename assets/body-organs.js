@@ -22,6 +22,7 @@ uniform vec3 uCutN;
 uniform float uCut;
 uniform float uBeat;
 uniform vec4 uP;
+uniform int uZero;   // vale sempre 0: impedisce al compilatore di srotolare i cicli (e di esplodere)
 
 const float TAU = 6.2831853;
 const float PI = 3.1415927;
@@ -99,8 +100,11 @@ vec2 sdBezier(vec3 pos, vec3 A, vec3 B, vec3 C) {
 `;
 
   const MAIN = `
+vec2 gO;       // ultimo risultato grezzo di organ()
+
 float map(vec3 p) {
   vec2 o = organ(p);
+  gO = o;
   gM = o.y;
   float c = dot(p - CENTER, uCutN) - uCut;
   if (c > o.x) { gCut = 1.0; return c; }
@@ -108,33 +112,7 @@ float map(vec3 p) {
   return o.x;
 }
 
-vec3 calcNormal(vec3 p) {
-  const vec2 k = vec2(1.0, -1.0);
-  const float e = 0.004;
-  return normalize(k.xyy * map(p + k.xyy * e) + k.yyx * map(p + k.yyx * e) +
-                   k.yxy * map(p + k.yxy * e) + k.xxx * map(p + k.xxx * e));
-}
-
-float softShadow(vec3 ro, vec3 rd) {
-  float res = 1.0, t = 0.08;
-  for (int i = 0; i < 30; i++) {
-    float h = map(ro + rd * t);
-    res = min(res, 9.0 * h / t);
-    t += clamp(h, 0.04, 0.7);
-    if (res < 0.01 || t > BOUND * 2.0) break;
-  }
-  return clamp(res, 0.0, 1.0);
-}
-
-float occlusion(vec3 p, vec3 n) {
-  float o = 0.0, s = 1.0;
-  for (int i = 1; i <= 4; i++) {
-    float h = 0.15 * float(i);
-    o += (h - map(p + n * h)) * s;
-    s *= 0.65;
-  }
-  return clamp(1.0 - 1.4 * o, 0.0, 1.0);
-}
+vec3 tetra(int i) { return 0.5773 * (2.0 * vec3(float(((i + 3) >> 1) & 1), float((i >> 1) & 1), float(i & 1)) - 1.0); }
 
 vec3 background(vec2 uv) {
   float r = length(uv * vec2(0.8, 1.0));
@@ -148,6 +126,7 @@ void main() {
   vec3 ro = uCam;
   vec3 rd = normalize(uRot * vec3(uv, 2.2));
   vec3 col = background(uv);
+  vec3 L1 = normalize(uRot * vec3(-0.55, 0.7, -0.45));
 
   // Si cammina solo dentro la sfera che contiene l'organo.
   vec3 oc = ro - CENTER;
@@ -155,25 +134,64 @@ void main() {
   if (h > 0.0) {
     h = sqrt(h);
     float t = max(-b - h, 0.0), tmax = -b + h;
+
+    // Un unico ciclo, in fasi: marcia del raggio, quattro campioni per la normale, ombra morbida,
+    // occlusione ambientale. map() compare in un solo punto del codice: su Windows il compilatore
+    // di DirectX copia ogni funzione in ogni chiamata, e così l'organo viene compilato una volta sola.
+    int phase = 0, k = 0;
+    vec3 pos = ro + rd * t, p = pos, n = vec3(0.0);
+    float isCut = 0.0, m = 0.0, sh = 1.0, ts = 0.1, occ = 0.0, occW = 1.0;
+    vec4 aux = vec4(0.0);
+    vec2 oHit = vec2(0.0);
     bool hit = false;
-    for (int i = 0; i < 220; i++) {
-      float d = map(ro + rd * t);
-      if (d < 0.0012 * t) { hit = true; break; }
-      t += d * STEP;
-      if (t > tmax) break;
+    for (int i = uZero; i < 280; i++) {
+      float d = map(pos);
+      if (phase == 0) {
+        if (d < 0.0012 * t) {
+          hit = true; p = pos;
+          isCut = gCut; m = gM; aux = gA; oHit = gO;
+          phase = 1; k = 0; pos = p + tetra(0) * 0.004;
+        } else {
+          t += d * STEP;
+          if (t > tmax) break;
+          pos = ro + rd * t;
+        }
+      } else if (phase == 1) {
+        n += tetra(k) * d;
+        k++;
+        if (k < 4) pos = p + tetra(k) * 0.004;
+        else { n = normalize(n); phase = 2; k = 0; pos = p + n * 0.02 + L1 * ts; }
+      } else if (phase == 2) {
+        sh = min(sh, 9.0 * d / ts);
+        ts += clamp(d, 0.05, 0.8);
+        k++;
+        if (sh < 0.01 || ts > BOUND * 2.0 || k >= 24) { phase = 3; k = 1; pos = p + n * 0.15; }
+        else pos = p + n * 0.02 + L1 * ts;
+      } else {
+        occ += (0.15 * float(k) - d) * occW;
+        occW *= 0.65;
+        k++;
+        if (k > 4) break;
+        pos = p + n * (0.15 * float(k));
+      }
     }
+
     if (hit) {
-      vec3 p = ro + rd * t;
-      vec3 n = calcNormal(p);
-      map(p);
-      float isCut = gCut, m = gM;
-      vec4 mat = isCut > 0.5 ? vec4(cutColor(p), 0.08) : material(m, p, n);
+      if (phase < 2) n = normalize(n + vec3(1e-4));
+      sh = clamp(sh, 0.0, 1.0);
+      occ = clamp(1.0 - 1.4 * occ, 0.0, 1.0);
+      gA = aux;
+      vec4 mat;
+      float edge = 1.0;
+      if (isCut > 0.5) {
+        mat = vec4(cutColor(p, oHit), 0.08);
+        edge = mix(0.35, 1.0, smoothstep(0.0, 0.12, -oHit.x));               // contorno della sezione
+      } else {
+        mat = material(m, p, n);
+      }
       vec3 V = -rd;
-      vec3 L1 = normalize(uRot * vec3(-0.55, 0.7, -0.45));
       vec3 L2 = normalize(uRot * vec3(0.8, 0.05, -0.35));
       vec3 L3 = normalize(uRot * vec3(0.3, 0.45, 1.0));
-      float sh = softShadow(p + n * 0.02, L1);
-      float occ = occlusion(p, n);
       float d1 = max((dot(n, L1) + 0.35) / 1.35, 0.0);
       float d2 = max(dot(n, L2), 0.0);
       float d3 = pow(max(dot(n, L3), 0.0), 2.0);
@@ -183,9 +201,7 @@ void main() {
       c += mat.rgb * mat.rgb * pow(1.0 - max(dot(n, L1), 0.0), 2.0) * 0.25;
       c += vec3(1.0, 0.95, 0.9) * spec * 0.9;
       c += vec3(0.75, 0.82, 1.0) * d3 * (0.1 + 0.5 * fres) * 0.45;
-      c *= mix(1.0, occ, 0.7);
-      if (isCut > 0.5) c *= mix(0.35, 1.0, smoothstep(0.0, 0.12, -organ(p).x));   // contorno della sezione
-      col = c;
+      col = c * mix(1.0, occ, 0.7) * edge;
     }
   }
 
@@ -201,42 +217,86 @@ void main() {
     sagittale: [1, 0, 0],
     assiale: [0, 1, 0],
   };
+  const UNIFORMS = ['uRes', 'uTime', 'uCam', 'uRot', 'uCutN', 'uCut', 'uBeat', 'uP', 'uZero'];
 
   const BodyOrgans = window.BodyOrgans || (window.BodyOrgans = { list: {} });
   BodyOrgans.shaderParts = { VS, COMMON, MAIN };   // utile per il debug dalla console
+
+  // ---------- un solo contesto WebGL per tutti gli organi, con i programmi già compilati ----------
+  // Su Windows il GLSL viene tradotto per DirectX e compilato: può richiedere secondi.
+  // Per questo la compilazione avviene in parallelo (se il browser lo consente), i programmi restano
+  // in memoria e, appena un organo è pronto, gli altri vengono preparati in sottofondo.
+  const cache = { canvas: null, gl: null, par: null, progs: {} };
+
+  function context() {
+    if (cache.gl && !cache.gl.isContextLost()) return cache.gl;
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2', { alpha: false, depth: false, antialias: false, powerPreference: 'high-performance' });
+    if (!gl) return null;
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);
+    Object.assign(cache, { canvas, gl, par: gl.getExtension('KHR_parallel_shader_compile'), progs: {} });
+    return gl;
+  }
+
+  function program(id) {
+    const gl = cache.gl;
+    let e = cache.progs[id];
+    if (e) return e;
+    const shader = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const vs = shader(gl.VERTEX_SHADER, VS);
+    const fs = shader(gl.FRAGMENT_SHADER, COMMON + BodyOrgans.list[id].glsl + MAIN);
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.bindAttribLocation(prog, 0, 'aPos');
+    gl.linkProgram(prog);
+    e = cache.progs[id] = { prog, vs, fs, U: null, error: null, started: performance.now() };
+    e.ready = () => {
+      if (e.U || e.error) return true;
+      if (cache.par && !gl.getProgramParameter(prog, cache.par.COMPLETION_STATUS_KHR)) return false;
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        e.error = gl.getShaderInfoLog(fs) || gl.getProgramInfoLog(prog) || 'compilazione non riuscita';
+        return true;
+      }
+      e.U = {};
+      for (const n of UNIFORMS) e.U[n] = gl.getUniformLocation(prog, n);
+      e.ms = Math.round(performance.now() - e.started);
+      return true;
+    };
+    return e;
+  }
+
+  // Prepara in sottofondo gli organi non ancora compilati, uno alla volta.
+  function warmUp() {
+    if (!cache.par || !cache.gl || cache.gl.isContextLost()) return;
+    const next = Object.keys(BodyOrgans.list).find((k) => !cache.progs[k]);
+    if (!next) return;
+    const e = program(next);
+    const wait = () => (e.ready() ? setTimeout(warmUp, 300) : setTimeout(wait, 250));
+    setTimeout(wait, 250);
+  }
 
   BodyOrgans.mount = function (stage, ui, id) {
     const organ = BodyOrgans.list[id];
     ui.header({ kicker: organ.kicker, title: organ.title, tagline: organ.tagline, formula: organ.formula, how: organ.how });
     ui.hint(organ.hint || 'Trascina per girare intorno all’organo · rotella per avvicinarti');
 
-    const canvas = document.createElement('canvas');
+    const gl = context();
+    if (!gl) return Lab.fail(stage, 'Il browser non supporta WebGL2.');
+    const canvas = cache.canvas;
     stage.append(canvas);
     const labelLayer = Lab.h('div', { class: 'organ-labels', 'aria-hidden': 'true' });
     stage.append(labelLayer);
-    const gl = canvas.getContext('webgl2', { alpha: false, depth: false, antialias: false, powerPreference: 'high-performance' });
-    if (!gl) return Lab.fail(stage, 'Il browser non supporta WebGL2.');
-
-    function compile(type, src) {
-      const s = gl.createShader(type);
-      gl.shaderSource(s, src);
-      gl.compileShader(s);
-      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
-      return s;
-    }
-    const prog = gl.createProgram();
-    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
-    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, COMMON + organ.glsl + MAIN));
-    gl.bindAttribLocation(prog, 0, 'aPos');
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
-    gl.useProgram(prog);
-    const U = {};
-    for (const n of ['uRes', 'uTime', 'uCam', 'uRot', 'uCutN', 'uCut', 'uBeat', 'uP']) U[n] = gl.getUniformLocation(prog, n);
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(0);
+    const loading = Lab.h('div', { class: 'organ-loading', role: 'status' },
+      Lab.h('span', { class: 'organ-spinner', 'aria-hidden': 'true' }),
+      Lab.h('span', {}, `Preparo il modello: ${organ.name.toLowerCase()}…`));
+    stage.append(loading);
+    const entry = program(id);
+    const listen = new AbortController();
+    const on = (type, fn, opts) => canvas.addEventListener(type, fn, { ...opts, signal: listen.signal });
 
     // ---------- stato condiviso con l'organo ----------
     const cam0 = organ.camera;
@@ -285,12 +345,12 @@ void main() {
 
     // ---------- input: orbita e zoom ----------
     let px = 0, py = 0;
-    canvas.addEventListener('pointerdown', (e) => {
+    on('pointerdown', (e) => {
       canvas.setPointerCapture(e.pointerId);
       st.dragging = true; px = e.clientX; py = e.clientY;
       st.lastInput = performance.now();
     });
-    canvas.addEventListener('pointermove', (e) => {
+    on('pointermove', (e) => {
       if (!st.dragging) return;
       st.yaw -= (e.clientX - px) * 0.007;
       st.pitch = Math.max(-1.35, Math.min(1.35, st.pitch + (e.clientY - py) * 0.006));
@@ -298,9 +358,9 @@ void main() {
       st.lastInput = performance.now();
     });
     const endDrag = () => { st.dragging = false; st.lastInput = performance.now(); };
-    canvas.addEventListener('pointerup', endDrag);
-    canvas.addEventListener('pointercancel', endDrag);
-    canvas.addEventListener('wheel', (e) => {
+    on('pointerup', endDrag);
+    on('pointercancel', endDrag);
+    on('wheel', (e) => {
       e.preventDefault();
       st.dist = Math.max(cam0.dist * 0.4, Math.min(cam0.dist * 1.8, st.dist * Math.exp(e.deltaY * 0.001)));
       st.lastInput = performance.now();
@@ -319,13 +379,29 @@ void main() {
     const fps = Lab.fpsMeter();
     const t0 = performance.now();
     const C = organ.center;
-    let raf = 0, last = t0, ema = 16.7, frames = 0, lastAdapt = t0;
+    let raf = 0, last = t0, ema = 16.7, frames = 0, lastAdapt = t0, U = null;
 
     function frame(now) {
       raf = requestAnimationFrame(frame);
       const rawDt = Math.max(0, now - last);
       last = Math.max(last, now);
       const dt = Math.min(rawDt / 1000, 0.1);
+
+      // Finché lo shader non è pronto la pagina resta libera: si mostra solo l'avviso.
+      if (!U) {
+        if (!entry.ready()) return;
+        if (entry.error) {
+          cancelAnimationFrame(raf);
+          loading.remove();
+          Lab.fail(stage, 'Lo shader non si è compilato: ' + entry.error.slice(0, 300));
+          return;
+        }
+        U = entry.U;
+        gl.useProgram(entry.prog);
+        loading.remove();
+        last = now;
+        setTimeout(warmUp, 500);
+      }
       frames++;
       ema += (rawDt - ema) * 0.08;
       if (frames > 40 && now - lastAdapt > 700) {
@@ -356,6 +432,7 @@ void main() {
       gl.uniform1f(U.uCut, cutN ? st.cutPos : 1e3);
       gl.uniform1f(U.uBeat, st.beat);
       gl.uniform4f(U.uP, ...st.p);
+      gl.uniform1i(U.uZero, 0);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
       // Etichette: proiezione degli stessi punti 3D sullo schermo.
@@ -404,11 +481,11 @@ void main() {
       unmount() {
         cancelAnimationFrame(raf);
         stopObs();
+        listen.abort();
         if (hooks.dispose) hooks.dispose();
-        const lose = gl.getExtension('WEBGL_lose_context');
-        if (lose) lose.loseContext();
-        canvas.remove();
+        canvas.remove();                     // il contesto e i programmi restano pronti per il prossimo organo
         labelLayer.remove();
+        loading.remove();
       },
     };
   };

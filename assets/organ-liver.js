@@ -87,8 +87,7 @@ vec4 material(float m, vec3 p, vec3 n) {
   return vec4(0.86, 0.8, 0.72, 0.5);                     // legamento falciforme
 }
 
-vec3 cutColor(vec3 p) {
-  vec2 o = organ(p);
+vec3 cutColor(vec3 p, vec2 o) {
   if (o.y > 1.5 && o.y < 2.5) return vec3(0.35, 0.55, 0.2);             // bile nella cistifellea
   if (o.y > 2.5) return vec3(0.35, 0.08, 0.08);                         // sangue nei grandi vasi
   vec3 base = uP.x > 0.5 ? segmentColor(p) * 0.85 : vec3(0.52, 0.2, 0.15);
