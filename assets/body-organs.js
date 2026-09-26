@@ -374,7 +374,7 @@ void main() {
           const [x, y, z, v] = project(l.p);
           const facing = l.n[0] * -v[0] + l.n[1] * -v[1] + l.n[2] * -v[2];
           const cutAway = cutN && (l.p[0] - C[0]) * cutN[0] + (l.p[1] - C[1]) * cutN[1] + (l.p[2] - C[2]) * cutN[2] > st.cutPos;
-          const show = z > 0.1 && facing > 0 && !cutAway;
+          const show = z > 0.1 && facing > 0 && !cutAway && (!l.only || l.only === st.cut);
           l.el.hidden = !show;
           if (show) shown.push({ l, x, y, left: x < cx, ty: y });
         }
