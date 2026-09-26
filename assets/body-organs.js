@@ -247,6 +247,29 @@ void main() {
     }
   }
 
+#ifdef HAS_GHOST
+  // Sagoma trasparente (per il corpo intero): un secondo raymarching, solo sulla sagoma,
+  // che ne disegna il contorno luminoso sopra quello che c'è dentro.
+  if (h > 0.0 && ghostOn() > 0.5) {
+    float gt = max(-b - h, 0.0), gmax = -b + h;
+    bool ghit = false;
+    for (int i = uZero; i < 72; i++) {
+      float d = ghost(ro + rd * gt);
+      if (d < 0.004 * gt) { ghit = true; break; }
+      gt += d;
+      if (gt > gmax) break;
+    }
+    if (ghit) {
+      vec3 gp = ro + rd * gt;
+      vec3 gn = vec3(0.0);
+      for (int i = uZero; i < 4; i++) { vec3 e = tetra(i); gn += e * ghost(gp + e * 0.3); }
+      gn = normalize(gn);
+      float rim = pow(1.0 - abs(dot(gn, rd)), 2.2);
+      col = col * (1.0 - 0.25 * rim) + vec3(0.35, 0.65, 1.0) * (0.035 + 0.55 * rim);
+    }
+  }
+#endif
+
   col = aces(col * 0.95);
   col = pow(col, vec3(1.0 / 2.2));
   col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
