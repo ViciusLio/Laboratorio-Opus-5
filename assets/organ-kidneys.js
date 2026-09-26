@@ -27,7 +27,8 @@ float kidney(vec3 q) {
 
 vec2 organ(vec3 p) {
   vec3 q = kidneyLocal(p);
-  float k = kidney(q);
+  float ks = 1.0 + 0.1 * uP.x * step(0.0, p.x);                  // il rene sinistro si gonfia con l'idronefrosi
+  float k = kidney(q / ks) * ks;
   vec3 aq = q - vec3(-0.9, 6.1, 0.0);
   aq.xy = rot(0.5) * aq.xy;
   float adr = sdEllipsoid(aq, vec3(1.7, 1.2, 0.45)) + 0.08 * noise(p * 3.0);   // surrenale
@@ -50,7 +51,8 @@ vec2 organ(vec3 p) {
   float ven = smin(vc, rv, 0.4);
 
   // Ureteri: dalla pelvi renale verso il basso, lungo il muscolo psoas.
-  float ur = sdBezier(p, vec3(3.1, -0.6, 0.5), vec3(3.6, -6.0, 0.3), vec3(2.6, -12.0, -0.3)).x - 0.25;
+  vec2 ul = sdBezier(p, vec3(3.1, -0.6, 0.5), vec3(3.6, -6.0, 0.3), vec3(2.6, -12.0, -0.3));
+  float ur = ul.x - 0.25 - 0.4 * uP.x * uP.y * smoothstep(0.55, 0.3, ul.y);   // sopra il calcolo l'uretere si dilata
   ur = min(ur, sdBezier(p, vec3(-3.2, -2.4, 0.4), vec3(-3.6, -7.0, 0.2), vec3(-2.9, -12.0, -0.3)).x - 0.25);
 
   vec2 r = vec2(k, 1.0);
@@ -58,6 +60,7 @@ vec2 organ(vec3 p) {
   r = SU(r, vec2(art, 3.0), 0.3);
   r = SU(r, vec2(ven, 4.0), 0.3);
   r = SU(r, vec2(ur, 5.0), 0.3);
+  if (uP.y > 0.5) r = U(r, vec2(length(p - vec3(3.22, -6.15, 0.2)) - 0.5 + 0.12 * noise(p * 7.0), 6.0));   // calcolo
   return r;
 }
 
@@ -66,6 +69,7 @@ vec4 material(float m, vec3 p, vec3 n) {
   if (m < 2.5) return vec4(vec3(0.84, 0.6, 0.24) * (0.85 + 0.3 * noise(p * 5.0)), 0.4);   // surrenale
   if (m < 3.5) return vec4(0.66, 0.07, 0.06, 0.7);
   if (m < 4.5) return vec4(0.12, 0.18, 0.5, 0.7);
+  if (m > 5.5) return vec4(0.9, 0.82, 0.5, 0.9);                                           // calcolo (ossalato di calcio)
   return vec4(0.86, 0.8, 0.64, 0.5);                                                       // uretere
 }
 
@@ -87,12 +91,15 @@ vec3 cutColor(vec3 p, vec2 o) {
   bool inSpan = abs(th) < 2.45;
   float sec = (th + 2.45) / 4.9 * 8.0;             // otto piramidi a ventaglio
   float f = fract(sec) - 0.5;
+  float hy = uP.x * step(0.0, p.x);                // idronefrosi: solo il rene sinistro, a monte del calcolo
+  float ctx = mix(0.85, 0.55, hy), pyr = mix(2.55, 1.6, hy), cal = mix(2.4, 1.35, hy);
   float w = 0.44 * smoothstep(2.6, 0.9, depth);    // larghe alla base, strette verso la papilla
-  if (inSpan && depth > 0.85 && depth < 2.55 && abs(f) < w)
+  if (inSpan && depth > ctx && depth < pyr && abs(f) < w)
     c = vec3(0.44, 0.09, 0.09) * (0.8 + 0.3 * sin(th * 90.0));                            // piramide striata
-  if (depth > 2.4 && r > 1.25) c = vec3(0.9, 0.74, 0.38);                                  // grasso del seno
-  if (inSpan && abs(f) < 0.13 && depth > 2.4) c = vec3(0.93, 0.87, 0.74);                  // calici minori
-  if (r < 1.25 && q.x > -3.2) c = vec3(0.93, 0.87, 0.74);                                  // pelvi renale
+  float pr = mix(1.25, 2.7, hy);
+  if (depth > cal && r > pr) c = vec3(0.9, 0.74, 0.38);                                    // grasso del seno
+  if (inSpan && abs(f) < mix(0.13, 0.3, hy) && depth > cal) c = vec3(0.93, 0.87, 0.74);    // calici minori
+  if (r < pr && q.x > -3.2) c = vec3(0.93, 0.87, 0.74);                                    // pelvi renale
   return c;
 }
 `;
@@ -136,7 +143,18 @@ vec3 cutColor(vec3 p, vec2 o) {
       ['Urina prodotta', '≈ 1,5 L/giorno'],
       ['Nefroni', '≈ 1 milione per rene'],
       ['Flusso di sangue', '≈ 20% della gittata'],
+      ['Rene sinistro', (st) => (st.p[0] < 0.05 ? 'normale' : st.p[0] < 0.4 ? 'idronefrosi lieve' : st.p[0] < 0.75 ? 'idronefrosi moderata' : 'idronefrosi grave')],
     ],
     glsl: GLSL,
+
+    setup(ui, st) {
+      let hydCtl = null;
+      ui.toggle({
+        id: 'stone', label: 'Calcolo nell’uretere sinistro', value: false,
+        onChange: (v) => { st.p[1] = v ? 1 : 0; if (v && st.p[0] < 0.05) { st.p[0] = 0.6; hydCtl.set(0.6); } },
+      });
+      hydCtl = ui.slider({ id: 'hyd', label: 'Idronefrosi (rene sinistro)', min: 0, max: 1, step: 0.01, value: 0, format: (v) => (v < 0.05 ? 'assente' : Math.round(v * 100) + '%'), onInput: (v) => (st.p[0] = v) });
+      return {};
+    },
   };
 })();

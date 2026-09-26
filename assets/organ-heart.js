@@ -24,7 +24,8 @@ vec3 toVent(vec3 p) {
 vec2 ventricles(vec3 p) {
   vec3 q = toVent(p);
   float vs = ventSys();
-  float k = 1.0 + 0.075 * vs;
+  float grow = 1.0 + 0.16 * uP.y + 0.06 * uP.x;          // dilatazione e ipertrofia ingrandiscono il cuore
+  float k = (1.0 + 0.075 * vs) / grow;
   vec3 qo = vec3(q.x * k, q.y * (1.0 + 0.035 * vs), q.z * k);
   vec3 qf = vec3(qo.x, qo.y, qo.z * 1.2);                      // un po' schiacciato davanti-dietro
   float lv = sdRoundCone(qf, vec3(0.3, -0.6, -0.2), vec3(0.2, -7.4, 0.1), 3.5, 0.95) * 0.83;
@@ -32,10 +33,11 @@ vec2 ventricles(vec3 p) {
   float outer = smin(lv, rv, 1.2) / k;
 
   // In sistole la cavità si svuota più di quanto si stringa il cuore: la parete si ispessisce.
-  float kc = 1.0 + 0.24 * vs;
-  vec3 qc = vec3(q.x * kc, q.y * (1.0 + 0.08 * vs), q.z * kc);
-  float lvc = sdEllipsoid(qc - vec3(0.4, -3.4, -0.2), vec3(1.1, 2.8, 1.0)) / kc;
-  float rvc = sdEllipsoid(qc - vec3(-2.7, -2.6, 0.9), vec3(1.1, 2.4, 1.3)) / kc;
+  // Ipertrofia: la parete cresce verso l'interno e la cavità si restringe. Dilatazione: il contrario.
+  float kl = (1.0 + 0.24 * vs) / (grow * (1.0 + 0.32 * uP.y - 0.36 * uP.x));
+  float kr = (1.0 + 0.24 * vs) / (grow * (1.0 + 0.15 * uP.y - 0.2 * uP.x));
+  float lvc = sdEllipsoid(vec3(q.x * kl, q.y * (1.0 + 0.08 * vs) / grow, q.z * kl) - vec3(0.4, -3.4, -0.2), vec3(1.1, 2.8, 1.0)) / kl;
+  float rvc = sdEllipsoid(vec3(q.x * kr, q.y * (1.0 + 0.08 * vs) / grow, q.z * kr) - vec3(-2.7, -2.6, 0.9), vec3(1.1, 2.4, 1.3)) / kr;
   float cav = min(lvc, rvc);
   float d = max(outer, -cav);
   float m = -cav > outer ? 8.0 : 1.0;
@@ -181,6 +183,8 @@ vec3 cutColor(vec3 p, vec2 o) {
     stats: [
       ['Battito', (st) => `${st.bpm} bpm`],
       ['Portata cardiaca', (st) => `${((st.bpm * st.sv) / 1000).toFixed(1)} L/min`],
+      ['Parete del ventricolo sinistro', (st) => `≈ ${(1.1 + 0.8 * st.p[0] - 0.25 * st.p[1]).toFixed(1).replace('.', ',')} cm (stima)`],
+      ['Frazione di eiezione', (st) => `≈ ${Math.round(62 - 30 * st.p[1] - 5 * st.p[0])}% (stima)`],
       ['Battiti in un giorno', (st) => (st.bpm * 1440).toLocaleString('it-IT')],
       ['Peso tipico', '250–350 g'],
     ],
@@ -200,6 +204,8 @@ vec3 cutColor(vec3 p, vec2 o) {
           if (actx) actx.resume();
         },
       });
+      ui.slider({ id: 'hyp', label: 'Ipertrofia (parete spessa)', min: 0, max: 1, step: 0.01, value: 0, format: (v) => (v < 0.02 ? 'assente' : Math.round(v * 100) + '%'), onInput: (v) => (st.p[0] = v) });
+      ui.slider({ id: 'dil', label: 'Dilatazione (cavità grandi)', min: 0, max: 1, step: 0.01, value: 0, format: (v) => (v < 0.02 ? 'assente' : Math.round(v * 100) + '%'), onInput: (v) => (st.p[1] = v) });
       const fig = ui.figure('Elettrocardiogramma, sincronizzato con il modello', 84);
 
       function thump(t, freq, gain) {

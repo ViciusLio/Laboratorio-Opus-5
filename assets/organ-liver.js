@@ -26,6 +26,10 @@ float portalBranches(vec3 p) {
 }
 
 float liverBody(vec3 p) {
+  // Steatosi: il fegato si ingrossa. Cirrosi: si rimpicciolisce e diventa nodulare.
+  float steat = clamp(uP.y, 0.0, 1.0), cirr = clamp(uP.y - 1.0, 0.0, 1.0);
+  float sc = 1.0 + 0.12 * steat - 0.2 * cirr;
+  p = (p - vec3(-1.5, 0.0, 0.0)) / sc + vec3(-1.5, 0.0, 0.0);
   // Un grande ellissoide trasversale più il lobo destro arrotondato...
   float whole = sdEllipsoid(p - vec3(-1.5, 0.8, -0.3), vec3(11.0, 7.2, 6.8));
   float right = sdEllipsoid(p - vec3(-5.0, -0.2, 0.0), vec3(6.8, 7.0, 6.4));
@@ -41,7 +45,8 @@ float liverBody(vec3 p) {
   // Legamento falciforme: solco sulla faccia anteriore e superiore.
   float fx = p.x - 1.1 - 0.08 * p.y;
   d += 0.16 * exp(-fx * fx / 0.05) * smoothstep(0.0, 2.0, p.z + p.y * 0.3);
-  return d + 0.05 * (noise(p * 1.5) - 0.5);
+  d -= 0.32 * cirr * smoothstep(0.35, 0.7, noise(p * 1.5));      // noduli di rigenerazione
+  return (d + 0.05 * (noise(p * 1.5) - 0.5)) * sc;
 }
 
 vec2 organ(vec3 p) {
@@ -76,7 +81,10 @@ vec3 segmentColor(vec3 p) {
 
 vec4 material(float m, vec3 p, vec3 n) {
   if (m < 1.5) {
-    vec3 c = uP.x > 0.5 ? segmentColor(p) : vec3(0.34, 0.1, 0.07) * (0.9 + 0.2 * noise(p * 2.5));
+    float steat = clamp(uP.y, 0.0, 1.0), cirr = clamp(uP.y - 1.0, 0.0, 1.0);
+    vec3 base = mix(vec3(0.34, 0.1, 0.07), vec3(0.66, 0.5, 0.28), steat);
+    base = mix(base, vec3(0.52, 0.28, 0.12) * (0.75 + 0.5 * noise(p * 1.5)), cirr);
+    vec3 c = uP.x > 0.5 ? segmentColor(p) : base * (0.9 + 0.2 * noise(p * 2.5));
     return vec4(c, 0.35);                                                                            // capsula lucida
   }
   if (m < 2.5) return vec4(0.3, 0.5, 0.2, 0.9);          // cistifellea
@@ -90,7 +98,13 @@ vec4 material(float m, vec3 p, vec3 n) {
 vec3 cutColor(vec3 p, vec2 o) {
   if (o.y > 1.5 && o.y < 2.5) return vec3(0.35, 0.55, 0.2);             // bile nella cistifellea
   if (o.y > 2.5) return vec3(0.35, 0.08, 0.08);                         // sangue nei grandi vasi
-  vec3 base = uP.x > 0.5 ? segmentColor(p) * 0.85 : vec3(0.52, 0.2, 0.15);
+  float steat = clamp(uP.y, 0.0, 1.0), cirr = clamp(uP.y - 1.0, 0.0, 1.0);
+  vec3 base = uP.x > 0.5 ? segmentColor(p) * 0.85 : mix(vec3(0.52, 0.2, 0.15), vec3(0.8, 0.66, 0.42), steat);
+  if (cirr > 0.0) {                                                   // setti fibrosi fra i noduli
+    float sept = 1.0 - smoothstep(0.02, 0.06, abs(noise(p * 1.5) - 0.5));
+    base = mix(mix(base, vec3(0.6, 0.34, 0.16), cirr), vec3(0.88, 0.84, 0.78), sept * cirr);
+  }
+  base = mix(base, vec3(0.95, 0.92, 0.8), steat * smoothstep(0.8, 0.9, noise(p * 14.0)));   // gocce di grasso
   // Lobuli epatici: una trama fitta di piccoli poligoni.
   vec3 cell = floor(p * 2.2);
   float lob = hash13(cell);
@@ -152,11 +166,13 @@ vec3 cutColor(vec3 p, vec2 o) {
       ['Flusso di sangue', '≈ 1,5 L/min'],
       ['Dalla vena porta', '≈ 75%'],
       ['Rigenerazione', 'da circa ¼ del tessuto'],
+      ['Stato del tessuto', (st) => (st.p[1] < 0.3 ? 'sano' : st.p[1] < 1.3 ? 'steatosi (fegato grasso)' : 'cirrosi')],
     ],
     glsl: GLSL,
 
     setup(ui, st) {
       ui.toggle({ id: 'segs', label: 'Segmenti di Couinaud', value: false, onChange: (v) => (st.p[0] = v ? 1 : 0) });
+      ui.slider({ id: 'tissue', label: 'Stato del tessuto', min: 0, max: 2, step: 0.01, value: 0, format: (v) => (v < 0.3 ? 'sano' : v < 1.3 ? 'steatosi' : 'cirrosi'), onInput: (v) => (st.p[1] = v) });
       return {};
     },
   };

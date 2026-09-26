@@ -28,7 +28,8 @@ float rowDist(vec3 p, float i, float zL, float off) {
   float env = smoothstep(xl, xl + 2.2, x) * smoothstep(xr, xr - 2.2, x);
   float yc = rowY(i, off) + 0.5 * sin(x * 0.95 + i * 1.7 + off) * env;
   float zc = zL + 0.7 * sin(x * 0.7 + i * 2.3 + off) * env;
-  return length(vec3(p.x - x, p.y - yc, p.z - zc)) * 0.85 - RT;
+  float wave = pow(0.5 + 0.5 * sin(x * 1.3 - uBeat * 6.2832 + i * 2.1), 6.0);   // anelli di contrazione che scorrono
+  return length(vec3(p.x - x, p.y - yc, p.z - zc)) * 0.85 - RT * (1.0 - 0.3 * uP.y * wave);
 }
 
 float turnDist(vec3 p, float xe, float ym, float zL, float dir) {
@@ -91,6 +92,7 @@ float colon(vec3 p, out float tae) {
   float ang = atan(dot(v, N2), dot(v, N1));
   tae = bi == 7 ? 0.0 : smoothstep(0.9, 0.975, cos(3.0 * ang + 0.6));
   float r = br * mix(haus, 0.9, tae);
+  if (bi >= 4 && bi <= 6) r += uP.z * 0.9 * smoothstep(0.62, 0.8, noise(p * 1.7 + 10.0));   // diverticoli
   return (length(v) - r) * 0.9;
 }
 
@@ -182,7 +184,9 @@ vec3 cutColor(vec3 p, vec2 o) {
         options: [{ value: 0, label: 'Tutto' }, { value: 1, label: 'Tenue' }, { value: 2, label: 'Crasso' }],
         onChange: (v) => (st.p[0] = v),
       });
-      return {};
+      ui.toggle({ id: 'peri', label: 'Peristalsi del tenue', value: false, onChange: (v) => (st.p[1] = v ? 1 : 0) });
+      ui.slider({ id: 'divert', label: 'Diverticoli (colon sinistro)', min: 0, max: 1, step: 0.01, value: 0, format: (v) => (v < 0.02 ? 'assenti' : Math.round(v * 100) + '%'), onInput: (v) => (st.p[2] = v) });
+      return { tick(dt) { if (st.p[1] > 0.5) st.beat += dt * 0.35; } };
     },
   };
 })();

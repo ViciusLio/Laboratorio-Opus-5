@@ -17,10 +17,11 @@ float sulci(vec3 p) {
   float ga = sin(5.4 * (p.y * 0.85 + p.z * 0.5) + warp);
   float gb = sin(5.4 * (p.y * 0.35 - p.z * 0.9 + p.x * 0.3) + warp * 1.2 + 1.7);
   float mixAB = smoothstep(-0.3, 0.3, gnoise(p * 0.17 + 40.0));
-  float ga2 = smoothstep(-0.45, -0.98, ga), gb2 = smoothstep(-0.45, -0.98, gb);
+  float wide = mix(-0.45, -0.1, uP.y);                  // con l'età i solchi si allargano
+  float ga2 = smoothstep(wide, -0.98, ga), gb2 = smoothstep(wide, -0.98, gb);
   float groove = mix(ga2, gb2, mixAB) * smoothstep(-0.65, -0.1, gnoise(p * 0.5 + 20.0));
   float fine = gnoise(p * 1.4 + 3.3);
-  return 0.27 * groove - 0.035 * mix(ga, gb, mixAB) + 0.02 * exp(-fine * fine / 0.05);
+  return (0.27 * groove - 0.035 * mix(ga, gb, mixAB) + 0.02 * exp(-fine * fine / 0.05)) * (1.0 + 0.8 * uP.y);
 }
 
 // Lamelle del cervelletto: archi concentrici attorno a un asse trasversale.
@@ -33,7 +34,7 @@ vec2 organ(vec3 p) {
   vec3 q = vec3(abs(p.x), p.y, p.z);
 
   // Emisfero (specchiato): ellissoide, lobo temporale, base appiattita, faccia mediale piatta.
-  float hem = sdEllipsoid(q - vec3(3.4, 0.8, 0.0), vec3(3.6, 4.8, 8.2));
+  float hem = sdEllipsoid(q - vec3(3.4, 0.8, 0.0), vec3(3.6, 4.8, 8.2) * (1.0 - 0.04 * uP.y));
   hem = smin(hem, sdEllipsoid(q - vec3(4.6, -2.0, 1.2), vec3(2.4, 2.0, 3.8)), 1.6);
   float floorY = -2.3 - 1.5 * smoothstep(3.0, -1.0, p.z);
   hem = smax(hem, floorY - p.y, 1.0);
@@ -54,8 +55,9 @@ vec2 organ(vec3 p) {
   hem = smin(hem, cc, 0.4);
 
   // Ventricoli laterali: cavità piene di liquor.
-  float vent = smin(sdEllipsoid(q - vec3(1.0, 1.1, 0.3), vec3(0.45, 0.8, 3.0)),
-                    sdEllipsoid(q - vec3(1.3, 0.1, -3.0), vec3(0.4, 0.9, 1.5)), 0.5);
+  float vk = 1.0 + 1.1 * uP.y;                          // ventricoli più grandi con l'età
+  float vent = smin(sdEllipsoid(q - vec3(1.0, 1.1, 0.3), vec3(0.45 * vk, 0.8 * vk, 3.0)),
+                    sdEllipsoid(q - vec3(1.3, 0.1, -3.0), vec3(0.4 * vk, 0.9 * vk, 1.5)), 0.5);
   float m = -vent > hem ? 6.0 : 1.0;
   hem = max(hem, -vent);
 
@@ -163,11 +165,14 @@ vec3 cutColor(vec3 p, vec2 o) {
       ['Neuroni', '≈ 86 miliardi'],
       ['Corteccia', '2–4 mm di spessore'],
       ['Potenza', '≈ 20 W'],
+      ['Età del modello', (st) => `${Math.round(20 + 70 * st.p[1])} anni`],
+      ['Volume (stima)', (st) => `≈ ${(1.3 - 0.18 * st.p[1]).toFixed(2).replace('.', ',')} L`],
     ],
     glsl: GLSL,
 
     setup(ui, st) {
       ui.toggle({ id: 'lobes', label: 'Colora i lobi', value: false, onChange: (v) => (st.p[0] = v ? 1 : 0) });
+      ui.slider({ id: 'age', label: 'Età', min: 20, max: 90, step: 1, value: 20, format: (v) => `${v} anni`, onInput: (v) => (st.p[1] = (v - 20) / 70) });
       return {};
     },
   };
