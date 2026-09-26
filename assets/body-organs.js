@@ -23,6 +23,16 @@ uniform float uCut;
 uniform float uBeat;
 uniform vec4 uP;
 uniform int uZero;   // vale sempre 0: impedisce al compilatore di srotolare i cicli (e di esplodere)
+uniform vec4 uQ;     // altri parametri dell'organo (respiro, riempimento, ...)
+
+// Kit anatomico: tubi e alberi generati in JavaScript e passati come dati.
+// Ogni segmento è un cono arrotondato fra due punti; i segmenti sono raggruppati a gruppi di 8
+// con una sfera che li contiene, così si saltano interi rami lontani dal punto.
+#define MAXSEG 96
+uniform vec4 uSegA[MAXSEG];   // punto a, raggio in a
+uniform vec4 uSegB[MAXSEG];   // punto b, raggio in b
+uniform vec4 uGrp[12];        // sfera che contiene ogni gruppo di 8 segmenti
+uniform int uSegN;
 
 const float TAU = 6.2831853;
 const float PI = 3.1415927;
@@ -96,6 +106,24 @@ vec2 sdBezier(vec3 pos, vec3 A, vec3 B, vec3 C) {
     if (dis < res.x) res = vec2(dis, t.y);
   }
   return vec2(sqrt(res.x), res.y);
+}
+
+// Distanza dal segmento del kit più vicino: x = distanza, y = indice del segmento.
+vec2 segments(vec3 p) {
+  float d = 1e5, idx = -1.0;
+  for (int g = uZero; g < 12; g++) {
+    if (g * 8 >= uSegN) break;
+    vec4 s = uGrp[g];
+    if (length(p - s.xyz) - s.w > d) continue;
+    for (int j = uZero; j < 8; j++) {
+      int i = g * 8 + j;
+      vec4 a = uSegA[i], b = uSegB[i];
+      if (a.w < 0.0) continue;
+      float e = sdRoundCone(p, a.xyz, b.xyz, a.w, b.w);
+      if (e < d) { d = e; idx = float(i); }
+    }
+  }
+  return vec2(d, idx);
 }
 `;
 
@@ -217,10 +245,93 @@ void main() {
     sagittale: [1, 0, 0],
     assiale: [0, 1, 0],
   };
-  const UNIFORMS = ['uRes', 'uTime', 'uCam', 'uRot', 'uCutN', 'uCut', 'uBeat', 'uP', 'uZero'];
+  const UNIFORMS = ['uRes', 'uTime', 'uCam', 'uRot', 'uCutN', 'uCut', 'uBeat', 'uP', 'uZero', 'uQ', 'uSegA', 'uSegB', 'uGrp', 'uSegN'];
 
   const BodyOrgans = window.BodyOrgans || (window.BodyOrgans = { list: {} });
   BodyOrgans.shaderParts = { VS, COMMON, MAIN };   // utile per il debug dalla console
+
+  // ---------- kit anatomico, lato JavaScript: genera tubi e alberi a partire da parametri ----------
+  const v3 = {
+    add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
+    sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+    mul: (a, k) => [a[0] * k, a[1] * k, a[2] * k],
+    len: (a) => Math.hypot(a[0], a[1], a[2]),
+    norm: (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; },
+    cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  };
+  const kit = {
+    v3,
+    MAXSEG: 96,
+    rng(seed) {
+      let a = seed >>> 0;
+      return () => {
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    },
+    // Una spezzata di punti con i rispettivi raggi.
+    polyline(points, radii) {
+      const out = [];
+      for (let i = 0; i + 1 < points.length; i++) out.push({ a: points[i], b: points[i + 1], ra: radii[i], rb: radii[i + 1] });
+      return out;
+    },
+    // Albero ramificato: ogni ramo si divide in due; il raggio dei figli segue la legge di Murray
+    // (r_figlio = r_padre · 2^(−1/3)) e la lunghezza si accorcia di un fattore costante.
+    tree({ start, dir, length, radius, generations, angle = 0.6, angle0 = angle, shrink = 0.8, pullK = 0.9, rand = Math.random, inside = null }) {
+      const out = [];
+      const murray = Math.pow(2, -1 / 3);
+      const grow = (a, d, len, r, gen, twist) => {
+        let b = v3.add(a, v3.mul(d, len));
+        if (inside) {
+          const pull = inside(b);
+          if (pull) { d = v3.norm(v3.add(d, v3.mul(pull, pullK))); b = v3.add(a, v3.mul(d, len)); }
+        }
+        const rc = r * murray;
+        out.push({ a, b, ra: r, rb: gen + 1 < generations ? rc : r * 0.85, gen });
+        if (gen + 1 >= generations) return;
+        const ref = Math.abs(d[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+        const u = v3.norm(v3.cross(d, ref)), w = v3.cross(d, u);
+        const phi = twist + (rand() - 0.5) * 0.8;
+        const axis = v3.add(v3.mul(u, Math.cos(phi)), v3.mul(w, Math.sin(phi)));
+        for (const sgn of [-1, 1]) {
+          const th = (gen === 0 ? angle0 : angle) * (0.75 + 0.5 * rand());
+          const nd = v3.norm(v3.add(v3.mul(d, Math.cos(th)), v3.mul(axis, sgn * Math.sin(th))));
+          grow(b, nd, len * shrink * (0.85 + 0.3 * rand()), rc, gen + 1, twist + Math.PI / 2);
+        }
+      };
+      grow(start, v3.norm(dir), length, radius, 0, rand() * Math.PI);
+      return out;
+    },
+    // Richiamo verso il centro di un ellissoide per i rami che ne escono.
+    ellipsoidPull(c, r) {
+      return (p) => {
+        const q = [(p[0] - c[0]) / r[0], (p[1] - c[1]) / r[1], (p[2] - c[2]) / r[2]];
+        return v3.len(q) > 0.82 ? v3.norm(v3.sub(c, p)) : null;
+      };
+    },
+    // Impacchetta i segmenti nelle uniformi: gruppi di 8 con la sfera che li contiene.
+    pack(segs) {
+      const n = Math.min(segs.length, kit.MAXSEG);
+      const A = new Float32Array(kit.MAXSEG * 4).fill(-1), B = new Float32Array(kit.MAXSEG * 4), G = new Float32Array(12 * 4);
+      for (let i = 0; i < n; i++) {
+        const s = segs[i];
+        A.set([s.a[0], s.a[1], s.a[2], s.ra], i * 4);
+        B.set([s.b[0], s.b[1], s.b[2], s.rb], i * 4);
+      }
+      for (let g = 0; g * 8 < n; g++) {
+        const part = segs.slice(g * 8, Math.min(n, g * 8 + 8));
+        let c = [0, 0, 0];
+        for (const s of part) c = v3.add(c, v3.mul(v3.add(s.a, s.b), 0.5 / part.length));
+        let rad = 0;
+        for (const s of part) rad = Math.max(rad, v3.len(v3.sub(s.a, c)) + s.ra, v3.len(v3.sub(s.b, c)) + s.rb);
+        G.set([c[0], c[1], c[2], rad], g * 4);
+      }
+      return { A, B, G, n: Math.ceil(n / 8) * 8 };
+    },
+  };
+  BodyOrgans.kit = kit;
 
   // ---------- un solo contesto WebGL per tutti gli organi, con i programmi già compilati ----------
   // Su Windows il GLSL viene tradotto per DirectX e compilato: può richiedere secondi.
@@ -303,7 +414,7 @@ void main() {
     const st = {
       yaw: cam0.yaw, pitch: cam0.pitch, dist: cam0.dist,
       auto: true, labels: true, cut: 'nessuno', cutPos: 0,
-      beat: 0, p: [0, 0, 0, 0], scale: 0.6,
+      beat: 0, p: [0, 0, 0, 0], q: [0, 0, 0, 0], scale: 0.6, segs: null,
       dragging: false, lastInput: -1e9,
     };
 
@@ -398,6 +509,7 @@ void main() {
         }
         U = entry.U;
         gl.useProgram(entry.prog);
+        if (organ.buildSegments) st.segs = organ.buildSegments(kit, st);
         loading.remove();
         last = now;
         setTimeout(warmUp, 500);
@@ -433,6 +545,15 @@ void main() {
       gl.uniform1f(U.uBeat, st.beat);
       gl.uniform4f(U.uP, ...st.p);
       gl.uniform1i(U.uZero, 0);
+      gl.uniform4f(U.uQ, ...st.q);
+      if (st.segs) {                          // dati del kit: si caricano solo quando cambiano
+        const pk = kit.pack(st.segs);
+        gl.uniform4fv(U.uSegA, pk.A);
+        gl.uniform4fv(U.uSegB, pk.B);
+        gl.uniform4fv(U.uGrp, pk.G);
+        gl.uniform1i(U.uSegN, pk.n);
+        st.segs = null;
+      }
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
       // Etichette: proiezione degli stessi punti 3D sullo schermo.

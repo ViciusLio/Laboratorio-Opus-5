@@ -299,10 +299,14 @@ void main() {
   // Scene della scheda: il vaso visto dall'interno e gli organi (definiti in organ-*.js).
   const SCENES = [
     ['cuore', 'Cuore'],
+    ['polmoni', 'Polmoni'],
     ['cervello', 'Cervello'],
+    ['nervi', 'Sistema nervoso'],
+    ['esofago', 'Esofago'],
+    ['stomaco', 'Stomaco'],
     ['fegato', 'Fegato'],
-    ['reni', 'Reni'],
     ['intestino', 'Intestino'],
+    ['reni', 'Reni'],
     ['vaso', 'Dentro un vaso sanguigno'],
   ];
   let scene = 'cuore';
