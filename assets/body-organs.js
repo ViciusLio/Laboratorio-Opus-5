@@ -108,6 +108,20 @@ vec2 sdBezier(vec3 pos, vec3 A, vec3 B, vec3 C) {
   return vec2(sqrt(res.x), res.y);
 }
 
+// Kit: punto più vicino su una Bézier, con tangente, e angolo attorno al tubo (per pieghe e bande).
+vec2 bezierFrame(vec3 p, vec3 A, vec3 B, vec3 C, out vec3 Q, out vec3 T) {
+  vec2 b = sdBezier(p, A, B, C);
+  float t = b.y;
+  Q = mix(mix(A, B, t), mix(B, C, t), t);
+  T = normalize(2.0 * (1.0 - t) * (B - A) + 2.0 * t * (C - B) + vec3(0.0, 1e-5, 0.0));
+  return b;
+}
+float tubeAngle(vec3 v, vec3 T) {
+  vec3 n1 = normalize(cross(T, abs(T.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));
+  return atan(dot(v, cross(T, n1)), dot(v, n1));
+}
+vec3 bezierAt(vec3 A, vec3 B, vec3 C, float t) { return mix(mix(A, B, t), mix(B, C, t), t); }
+
 // Distanza dal segmento del kit più vicino: x = distanza, y = indice del segmento.
 vec2 segments(vec3 p) {
   float d = 1e5, idx = -1.0;
