@@ -154,7 +154,7 @@ vec3 cutColor(vec3 p, vec2 o) {
     tagline: 'Circa 12 centimetri e 300 grammi, costruiti con una trentina di forme matematiche fuse insieme. Batte al ritmo che scegli, sincronizzato con l’elettrocardiogramma. Taglialo per vedere dentro le camere.',
     hint: 'Trascina per girare · rotella per lo zoom · prova il taglio coronale',
     formula:
-      '<div>Q = FC × VS ≈ 70 bpm × 70 mL ≈ 4,9 L/min</div>' +
+      '<div>Q = FC × VS ≈ 4,9 L/min</div>' +
       '<div>smin(a, b, k) = min(a, b) − h<sup>2</sup>k ⁄ 4</div>',
     how:
       '<p>Scala reale in centimetri. Nessun modello 3D: ogni punto dell’immagine è calcolato da funzioni di distanza.</p>' +

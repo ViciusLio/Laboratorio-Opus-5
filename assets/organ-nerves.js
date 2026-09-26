@@ -152,7 +152,7 @@ vec3 cutColor(vec3 p, vec2 o) {
     hint: 'Premi “Comando al dito” o “Tocco al piede” · rotella per avvicinarti a mano e gamba',
     formula:
       '<div>t = L ⁄ v ≈ 1 m ⁄ 60 m/s ≈ 17 ms</div>' +
-      '<div>v ≈ 6 m/s per µm di diametro (fibre mieliniche)</div>',
+      '<div>v ≈ 6 · d  (m/s, d in µm)</div>',
     how:
       '<p>Scala reale in centimetri, con gli spessori dei nervi ingranditi di quasi due volte per vederli a figura intera. La sagoma del corpo è disegnata da un secondo raymarching, solo come contorno.</p>' +
       '<ol>' +

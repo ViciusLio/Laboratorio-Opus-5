@@ -291,7 +291,7 @@ button, input, select { font: inherit; color: inherit; }
   color: var(--text);
   overflow-x: auto;
 }
-.formula-body > div { white-space: nowrap; }
+.formula-body > div { text-wrap: balance; }
 .formula-body .up { font-style: normal; }
 .formula-body sub, .formula-body sup { font-size: .68em; line-height: 0; }
 

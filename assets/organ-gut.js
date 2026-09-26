@@ -145,7 +145,7 @@ vec3 cutColor(vec3 p, vec2 o) {
     tagline: 'Metri di tubo ripiegati in pochi centimetri: le anse del tenue incorniciate dal colon. Nel tenue avviene quasi tutto l’assorbimento, nel crasso vivono decine di migliaia di miliardi di batteri.',
     hint: 'Trascina per girare · scegli il tratto da mostrare · il taglio coronale apre le anse',
     formula:
-      '<div>pieghe × villi × microvilli ≈ 3 × 10 × 20 = ×600</div>' +
+      '<div>pieghe × villi × microvilli ≈ ×600</div>' +
       '<div>r(s) = r<sub>0</sub> (0,88 + 0,14 √|sin(πs ⁄ λ)|)</div>',
     how:
       '<p>Scala reale in centimetri. Il colon ascendente è alla tua sinistra, perché il paziente ti guarda.</p>' +

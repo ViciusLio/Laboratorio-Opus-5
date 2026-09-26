@@ -112,7 +112,7 @@ vec3 cutColor(vec3 p, vec2 o) {
     tagline: 'Due organi di 11 centimetri e 150 grammi che filtrano ogni giorno circa 180 litri di plasma, e ne restituiscono al corpo il 99%. Col taglio coronale compare la loro architettura interna.',
     hint: 'Trascina per girare · il taglio coronale mostra piramidi e pelvi renale',
     formula:
-      '<div>VFG ≈ 125 mL/min × 1440 min ≈ 180 L/giorno</div>' +
+      '<div>VFG ≈ 125 mL/min ≈ 180 L/giorno</div>' +
       '<div>riassorbito ≈ 1 − 1,5 ⁄ 180 ≈ 99%</div>',
     how:
       '<p>Scala reale in centimetri. Si guarda il paziente di fronte: il rene sinistro è alla tua destra.</p>' +

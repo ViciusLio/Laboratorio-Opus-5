@@ -127,8 +127,8 @@ vec3 cutColor(vec3 p, vec2 o) {
     tagline: 'L’organo interno più pesante: circa 1,5 kg e una ventina di centimetri. Riceve sangue da due parti, arteria epatica e vena porta. Accendi i segmenti di Couinaud per vederlo come lo vede un chirurgo.',
     hint: 'Trascina per girare · guardalo da sotto per vedere cistifellea e ilo · prova il taglio assiale',
     formula:
-      '<div>Q<sub>fegato</sub> = Q<sub>porta</sub> + Q<sub>arteria</sub> ≈ 1,1 + 0,4 L/min</div>' +
-      '<div>3 vene epatiche + 1 piano portale → 8 segmenti</div>',
+      '<div>Q = Q<sub>porta</sub> + Q<sub>arteria</sub> ≈ 1,5 L/min</div>' +
+      '<div>3 + 1 piani → 8 segmenti (Couinaud)</div>',
     how:
       '<p>Scala reale in centimetri: circa 21 cm da destra a sinistra, 15 in altezza nel lobo destro.</p>' +
       '<ol>' +

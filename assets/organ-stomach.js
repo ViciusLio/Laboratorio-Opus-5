@@ -88,7 +88,7 @@ vec3 cutColor(vec3 p, vec2 o) {
     tagline: 'Un sacco muscolare che si adatta al pasto: vuoto è raccolto e pieno di pieghe, pieno arriva a un litro e mezzo e le pieghe spariscono. Tre volte al minuto un’onda spinge il contenuto verso il piloro.',
     hint: 'Muovi “Riempimento” · il taglio coronale mostra le rughe e i tre strati muscolari',
     formula:
-      '<div>pH = −log<sub>10</sub>[H<sup>+</sup>] ≈ 2 ⇒ [H<sup>+</sup>] ≈ 10 mmol/L</div>' +
+      '<div>pH ≈ 2 ⇒ [H<sup>+</sup>] ≈ 10 mmol/L</div>' +
       '<div>r<sub>int</sub>(θ) = r<sub>0</sub> − a (1 − f) · sin(12θ)</div>',
     how:
       '<p>Scala reale in centimetri. È il primo organo costruito interamente con i mattoni del kit: tubi lungo curve con un raggio che varia.</p>' +
