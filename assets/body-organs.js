@@ -25,13 +25,10 @@ uniform vec4 uP;
 uniform int uZero;   // vale sempre 0: impedisce al compilatore di srotolare i cicli (e di esplodere)
 uniform vec4 uQ;     // altri parametri dell'organo (respiro, riempimento, ...)
 
-// Kit anatomico: tubi e alberi generati in JavaScript e passati come dati.
-// Ogni segmento è un cono arrotondato fra due punti; i segmenti sono raggruppati a gruppi di 8
-// con una sfera che li contiene, così si saltano interi rami lontani dal punto.
-#define MAXSEG 96
-uniform vec4 uSegA[MAXSEG];   // punto a, raggio in a
-uniform vec4 uSegB[MAXSEG];   // punto b, raggio in b
-uniform vec4 uGrp[12];        // sfera che contiene ogni gruppo di 8 segmenti
+// Kit anatomico: tubi e alberi generati in JavaScript e passati come dati, in una texture.
+// Riga 0: punto a e raggio; riga 1: punto b e raggio; riga 2: la sfera che contiene ogni gruppo di 8 segmenti.
+precision highp sampler2D;
+uniform sampler2D uSegTex;
 uniform int uSegN;
 
 const float TAU = 6.2831853;
@@ -122,23 +119,27 @@ float tubeAngle(vec3 v, vec3 T) {
 }
 vec3 bezierAt(vec3 A, vec3 B, vec3 C, float t) { return mix(mix(A, B, t), mix(B, C, t), t); }
 
-// Distanza dal segmento del kit più vicino: x = distanza, y = indice del segmento.
-vec2 segments(vec3 p) {
-  float d = 1e5, idx = -1.0;
-  for (int g = uZero; g < 12; g++) {
-    if (g * 8 >= uSegN) break;
-    vec4 s = uGrp[g];
+// Distanza dal segmento del kit più vicino (x) e suo indice (y). Si esaminano solo i gruppi la cui
+// sfera è più vicina di 'dMax': oltre, basta sapere che la distanza è almeno dMax (passo sicuro).
+vec2 segmentsWithin(vec3 p, float dMax) {
+  float d = dMax, idx = -1.0;
+  int ng = uSegN / 8;
+  for (int g = uZero; g < 96; g++) {
+    if (g >= ng) break;
+    vec4 s = texelFetch(uSegTex, ivec2(g, 2), 0);
     if (length(p - s.xyz) - s.w > d) continue;
     for (int j = uZero; j < 8; j++) {
       int i = g * 8 + j;
-      vec4 a = uSegA[i], b = uSegB[i];
+      vec4 a = texelFetch(uSegTex, ivec2(i, 0), 0);
       if (a.w < 0.0) continue;
+      vec4 b = texelFetch(uSegTex, ivec2(i, 1), 0);
       float e = sdRoundCone(p, a.xyz, b.xyz, a.w, b.w);
       if (e < d) { d = e; idx = float(i); }
     }
   }
   return vec2(d, idx);
 }
+vec2 segments(vec3 p) { return segmentsWithin(p, 1e5); }
 `;
 
   const MAIN = `
@@ -169,6 +170,8 @@ void main() {
   vec3 rd = normalize(uRot * vec3(uv, 2.2));
   vec3 col = background(uv);
   vec3 L1 = normalize(uRot * vec3(-0.55, 0.7, -0.45));
+  float glowAcc = 0.0;
+  bool hitAny = false;
 
   // Si cammina solo dentro la sfera che contiene l'organo.
   vec3 oc = ro - CENTER;
@@ -189,6 +192,9 @@ void main() {
     for (int i = uZero; i < 280; i++) {
       float d = map(pos);
       if (phase == 0) {
+#ifdef HAS_GLOW
+        glowAcc += glowAt(pos, d);
+#endif
         if (d < 0.0012 * t) {
           hit = true; p = pos;
           isCut = gCut; m = gM; aux = gA; oHit = gO;
@@ -218,6 +224,7 @@ void main() {
       }
     }
 
+    hitAny = hit;
     if (hit) {
       if (phase < 2) n = normalize(n + vec3(1e-4));
       sh = clamp(sh, 0.0, 1.0);
@@ -265,9 +272,13 @@ void main() {
       for (int i = uZero; i < 4; i++) { vec3 e = tetra(i); gn += e * ghost(gp + e * 0.3); }
       gn = normalize(gn);
       float rim = pow(1.0 - abs(dot(gn, rd)), 2.2);
-      col = col * (1.0 - 0.25 * rim) + vec3(0.35, 0.65, 1.0) * (0.035 + 0.55 * rim);
+      col = ghostShade(col, hitAny, rim, gn);
     }
   }
+#endif
+
+#ifdef HAS_GLOW
+  col = applyGlow(col, glowAcc);      // fibre sottili rese visibili dal loro alone (o dal loro tratto)
 #endif
 
   col = aces(col * 0.95);
@@ -282,7 +293,7 @@ void main() {
     sagittale: [1, 0, 0],
     assiale: [0, 1, 0],
   };
-  const UNIFORMS = ['uRes', 'uTime', 'uCam', 'uRot', 'uCutN', 'uCut', 'uBeat', 'uP', 'uZero', 'uQ', 'uSegA', 'uSegB', 'uGrp', 'uSegN'];
+  const UNIFORMS = ['uRes', 'uTime', 'uCam', 'uRot', 'uCutN', 'uCut', 'uBeat', 'uP', 'uZero', 'uQ', 'uSegTex', 'uSegN'];
 
   const BodyOrgans = window.BodyOrgans || (window.BodyOrgans = { list: {} });
   BodyOrgans.shaderParts = { VS, COMMON, MAIN };   // utile per il debug dalla console
@@ -298,7 +309,7 @@ void main() {
   };
   const kit = {
     v3,
-    MAXSEG: 96,
+    MAXSEG: 768,
     rng(seed) {
       let a = seed >>> 0;
       return () => {
@@ -348,14 +359,66 @@ void main() {
         return v3.len(q) > 0.82 ? v3.norm(v3.sub(c, p)) : null;
       };
     },
-    // Impacchetta i segmenti nelle uniformi: gruppi di 8 con la sfera che li contiene.
+    // Curva liscia (Catmull–Rom) attraverso i punti: 'k' suddivisioni per tratto.
+    smooth(pts, k = 3) {
+      if (pts.length < 3) return pts;
+      const out = [];
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+        for (let j = 0; j < k; j++) {
+          const t = j / k, t2 = t * t, t3 = t2 * t;
+          out.push([0, 1, 2].map((c) => 0.5 * (2 * p1[c] + (-p0[c] + p2[c]) * t + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * t2 + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * t3)));
+        }
+      }
+      out.push(pts[pts.length - 1]);
+      return out;
+    },
+    // Un nervo o un vaso: spezzata liscia con raggio che si assottiglia lungo il percorso.
+    path(pts, r0, r1, k = 2) {
+      const sp = kit.smooth(pts, k);
+      const out = [];
+      for (let i = 0; i + 1 < sp.length; i++) {
+        out.push({ a: sp[i], b: sp[i + 1], ra: r0 + (r1 - r0) * (i / (sp.length - 1)), rb: r0 + (r1 - r0) * ((i + 1) / (sp.length - 1)) });
+      }
+      return out;
+    },
+    // Rami laterali lungo un percorso: ogni 'every' cm un piccolo albero, orientato a caso ma
+    // trattenuto dentro l'arto dalla funzione 'inside'.
+    branches(segs, { every = 7, length = 4.5, radius = 0.1, generations = 2, bias = [0, -1, 0], rand = Math.random, inside = null }) {
+      const out = [];
+      let acc = every * 0.5;
+      for (const s of segs) {
+        acc += v3.len(v3.sub(s.b, s.a));
+        if (acc < every) continue;
+        acc = 0;
+        const along = v3.norm(v3.sub(s.b, s.a));
+        const ref = Math.abs(along[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+        const u = v3.norm(v3.cross(along, ref)), w = v3.cross(along, u);
+        const phi = rand() * Math.PI * 2;
+        const side = v3.add(v3.mul(u, Math.cos(phi)), v3.mul(w, Math.sin(phi)));
+        const dir = v3.norm(v3.add(v3.add(side, v3.mul(along, 0.6)), v3.mul(bias, 0.5)));
+        out.push(...kit.tree({ start: s.b, dir, length, radius, generations, angle: 0.55, shrink: 0.75, pullK: 1.2, rand, inside }));
+      }
+      return out;
+    },
+    // Richiamo verso l'asse di un arto (segmento a-b) per i rami che si allontanano più di 'r'.
+    limbPull(a, b, r) {
+      return (p) => {
+        const ab = v3.sub(b, a), t = Math.max(0, Math.min(1, (v3.len(ab) ? ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / (ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2]) : 0)));
+        const c = v3.add(a, v3.mul(ab, t));
+        return v3.len(v3.sub(p, c)) > r ? v3.norm(v3.sub(c, p)) : null;
+      };
+    },
+    // Impacchetta i segmenti in una texture 768×3: gruppi di 8 con la sfera che li contiene.
     pack(segs) {
-      const n = Math.min(segs.length, kit.MAXSEG);
-      const A = new Float32Array(kit.MAXSEG * 4).fill(-1), B = new Float32Array(kit.MAXSEG * 4), G = new Float32Array(12 * 4);
+      const W = kit.MAXSEG;
+      const n = Math.min(segs.length, W);
+      const data = new Float32Array(W * 3 * 4);
+      for (let i = 0; i < W; i++) data[i * 4 + 3] = -1;
       for (let i = 0; i < n; i++) {
         const s = segs[i];
-        A.set([s.a[0], s.a[1], s.a[2], s.ra], i * 4);
-        B.set([s.b[0], s.b[1], s.b[2], s.rb], i * 4);
+        data.set([s.a[0], s.a[1], s.a[2], s.ra], i * 4);
+        data.set([s.b[0], s.b[1], s.b[2], s.rb], (W + i) * 4);
       }
       for (let g = 0; g * 8 < n; g++) {
         const part = segs.slice(g * 8, Math.min(n, g * 8 + 8));
@@ -363,9 +426,9 @@ void main() {
         for (const s of part) c = v3.add(c, v3.mul(v3.add(s.a, s.b), 0.5 / part.length));
         let rad = 0;
         for (const s of part) rad = Math.max(rad, v3.len(v3.sub(s.a, c)) + s.ra, v3.len(v3.sub(s.b, c)) + s.rb);
-        G.set([c[0], c[1], c[2], rad], g * 4);
+        data.set([c[0], c[1], c[2], rad], (2 * W + g) * 4);
       }
-      return { A, B, G, n: Math.ceil(n / 8) * 8 };
+      return { data, width: W, n: Math.ceil(n / 8) * 8 };
     },
   };
   BodyOrgans.kit = kit;
@@ -585,9 +648,13 @@ void main() {
       gl.uniform4f(U.uQ, ...st.q);
       if (st.segs) {                          // dati del kit: si caricano solo quando cambiano
         const pk = kit.pack(st.segs);
-        gl.uniform4fv(U.uSegA, pk.A);
-        gl.uniform4fv(U.uSegB, pk.B);
-        gl.uniform4fv(U.uGrp, pk.G);
+        if (!cache.segTex) cache.segTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, cache.segTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, pk.width, 3, 0, gl.RGBA, gl.FLOAT, pk.data);
+        gl.uniform1i(U.uSegTex, 0);
         gl.uniform1i(U.uSegN, pk.n);
         st.segs = null;
       }
@@ -609,7 +676,7 @@ void main() {
           const [x, y, z, v] = project(l.p);
           const facing = l.n[0] * -v[0] + l.n[1] * -v[1] + l.n[2] * -v[2];
           const cutAway = cutN && (l.p[0] - C[0]) * cutN[0] + (l.p[1] - C[1]) * cutN[1] + (l.p[2] - C[2]) * cutN[2] > st.cutPos;
-          const show = z > 0.1 && facing > 0 && !cutAway && (!l.only || l.only === st.cut) && (!l.when || l.when(st));
+          const show = z > 0.1 && facing > 0 && !cutAway && (!l.only || l.only === st.cut) && (!l.when || l.when(st)) && (!l.near || st.dist <= l.near);
           l.el.hidden = !show;
           if (show) shown.push({ l, x, y, left: x < cx, ty: y });
         }
