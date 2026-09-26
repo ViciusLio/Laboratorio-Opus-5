@@ -1,7 +1,7 @@
 # Laboratorio Opus
 
 Cinque esperimenti interattivi scritti da zero da Claude Opus 5.5.
-Circa 7.000 righe di HTML, CSS, JavaScript e GLSL, **nessuna libreria esterna**.
+Circa 6.300 righe di HTML, CSS, JavaScript e GLSL, **nessuna libreria esterna**.
 
 **Provalo online:** https://viciuslio.github.io/Laboratorio-Opus-5/
 
